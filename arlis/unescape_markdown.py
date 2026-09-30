@@ -60,7 +60,7 @@ def unescape_markdown(md: str) -> str:
                     fence_pattern = None
             
             # Process the fence line itself normally
-            result_lines.append(process_line(line, i in keep_pipes_escaped_lines, in_code_block=False))
+            result_lines.append(process_line(line, i in keep_pipes_escaped_lines))
         elif in_fenced_code:
             # Inside a fenced code block - unescape EVERYTHING
             result_lines.append(unescape_all(line))
@@ -198,11 +198,8 @@ def process_line_with_inline_code(line: str, keep_pipes_escaped: bool = False) -
     return ''.join(result)
 
 
-def process_line(line: str, keep_pipes_escaped: bool = False, in_code_block: bool = False) -> str:
+def process_line(line: str, keep_pipes_escaped: bool = False) -> str:
     """Process a single line, unescaping safe characters."""
-    
-    if in_code_block:
-        return unescape_all(line)
     
     # First pass: identify all escape sequences
     escape_map = {}  # position -> (character, is_escaped_backslash)
@@ -222,27 +219,22 @@ def process_line(line: str, keep_pipes_escaped: bool = False, in_code_block: boo
         else:
             i += 1
     
-    # Process asterisks
-    asterisk_groups = []
-    processed_asterisks = set()
-    
+    # One ordered escape-group collector for asterisks/underscores/backticks/
+    # tildes: skip escaped backslashes, chain same-character entries at +2.
+    escape_groups = {'*': [], '_': [], '`': [], '~': []}
     for pos in sorted(escape_map.keys()):
         char, is_backslash = escape_map[pos]
-        if char == '*' and not is_backslash and pos not in processed_asterisks:
-            group = [pos]
-            processed_asterisks.add(pos)
-            next_pos = pos + 2
-            
-            while next_pos in escape_map:
-                next_char, next_is_backslash = escape_map[next_pos]
-                if next_char == '*' and not next_is_backslash:
-                    group.append(next_pos)
-                    processed_asterisks.add(next_pos)
-                    next_pos += 2
-                else:
-                    break
-            
-            asterisk_groups.append(group)
+        if is_backslash or char not in escape_groups:
+            continue
+        groups = escape_groups[char]
+        if groups and pos == groups[-1][-1] + 2:
+            groups[-1].append(pos)
+        else:
+            groups.append([pos])
+    asterisk_groups = escape_groups['*']
+    underscore_groups = escape_groups['_']
+    backtick_groups = escape_groups['`']
+    tilde_groups = escape_groups['~']
     
     # Find matching asterisk emphasis pairs
     paired_asterisk_positions = set()
@@ -284,28 +276,6 @@ def process_line(line: str, keep_pipes_escaped: bool = False, in_code_block: boo
                     used_asterisk_groups.add(i)
                     used_asterisk_groups.add(j)
                     break
-    
-    # Process underscores similarly
-    underscore_groups = []
-    processed_underscores = set()
-    
-    for pos in sorted(escape_map.keys()):
-        char, is_backslash = escape_map[pos]
-        if char == '_' and not is_backslash and pos not in processed_underscores:
-            group = [pos]
-            processed_underscores.add(pos)
-            next_pos = pos + 2
-            
-            while next_pos in escape_map:
-                next_char, next_is_backslash = escape_map[next_pos]
-                if next_char == '_' and not next_is_backslash:
-                    group.append(next_pos)
-                    processed_underscores.add(next_pos)
-                    next_pos += 2
-                else:
-                    break
-            
-            underscore_groups.append(group)
     
     # Find matching underscore emphasis pairs
     paired_underscore_positions = set()
@@ -355,28 +325,6 @@ def process_line(line: str, keep_pipes_escaped: bool = False, in_code_block: boo
                 used_underscore_groups.add(i)
                 used_underscore_groups.add(j)
                 break
-    
-    # Process backticks - simple rule: if only one sequence in line, unescape
-    backtick_groups = []
-    processed_backticks = set()
-    
-    for pos in sorted(escape_map.keys()):
-        char, is_backslash = escape_map[pos]
-        if char == '`' and not is_backslash and pos not in processed_backticks:
-            group = [pos]
-            processed_backticks.add(pos)
-            next_pos = pos + 2
-            
-            while next_pos in escape_map:
-                next_char, next_is_backslash = escape_map[next_pos]
-                if next_char == '`' and not next_is_backslash:
-                    group.append(next_pos)
-                    processed_backticks.add(next_pos)
-                    next_pos += 2
-                else:
-                    break
-            
-            backtick_groups.append(group)
     
     # Decide which positions to unescape
     positions_to_unescape = set()
@@ -694,17 +642,8 @@ def process_line(line: str, keep_pipes_escaped: bool = False, in_code_block: boo
             else:
                 positions_to_unescape.add(pos)  # Safe to unescape
         elif char == '~':
-            # Check for strikethrough (~~text~~)
-            tilde_groups = []
-            for p in sorted(escape_map.keys()):
-                c, is_bs = escape_map[p]
-                if c == '~' and not is_bs:
-                    if not tilde_groups or p != tilde_groups[-1][-1] + 2:
-                        tilde_groups.append([p])
-                    else:
-                        tilde_groups[-1].append(p)
-            
             # Check if this tilde is part of a potential strikethrough pair
+            # (a length-2 group stays escaped iff another length-2 group exists)
             in_pair = False
             for group in tilde_groups:
                 if pos in group and len(group) == 2:
@@ -759,17 +698,7 @@ def should_unescape_asterisk_group(line: str, group: list) -> bool:
     group_end = group_start + group_count * 2
     
     # Count total asterisks
-    total_asterisks = 0
-    i = 0
-    while i < len(line):
-        if i < len(line) - 1 and line[i:i+2] == '\\*':
-            i += 2
-            total_asterisks += 1
-        elif line[i] == '*':
-            i += 1
-            total_asterisks += 1
-        else:
-            i += 1
+    total_asterisks = line.count("*")
     
     # Check if it's a list marker
     if group_count == 1:
@@ -783,21 +712,7 @@ def should_unescape_asterisk_group(line: str, group: list) -> bool:
         return True
     
     # Rule 2: Only one sequence of asterisks
-    sequences = 0
-    i = 0
-    while i < len(line):
-        if i < len(line) - 1 and line[i:i+2] == '\\*':
-            sequences += 1
-            i += 2
-            while i < len(line) - 1 and line[i:i+2] == '\\*':
-                i += 2
-        elif line[i] == '*':
-            sequences += 1
-            i += 1
-            while i < len(line) and line[i] == '*':
-                i += 1
-        else:
-            i += 1
+    sequences = len(re.findall(r'(?:\\\*)+|\*+', line))
     
     if sequences == 1:
         # Check for horizontal rule
@@ -815,10 +730,10 @@ def should_unescape_asterisk_group(line: str, group: list) -> bool:
         return True
     
     # Rule 5: Unmatched asterisk
-    return is_unmatched_asterisk(line, group_start, group_count, group_end)
+    return is_unmatched_asterisk(line, group_start, group_end)
 
 
-def is_unmatched_asterisk(line: str, group_start: int, group_count: int, group_end: int) -> bool:
+def is_unmatched_asterisk(line: str, group_start: int, group_end: int) -> bool:
     """Check if asterisk group is unmatched on both sides."""
     
     # Check LEFT side
