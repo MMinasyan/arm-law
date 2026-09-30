@@ -1,7 +1,6 @@
 from bs4 import BeautifulSoup, NavigableString, Tag
 from typing import List, Union
 import re
-import copy
 from .unescape_markdown import unescape_markdown
 
 
@@ -40,13 +39,9 @@ def handle_text(element: NavigableString, context: dict) -> str:
     if ends_with_space:
         text = text + ' '
 
-    # First, escape backslashes
-    text = text.replace('\\', '\\\\')
-
-    # Then, escape other special characters
-    specials = '*_`~#+-=.|><[]()'
-    for char in specials:
-        text = text.replace(char, f'\\{char}')
+    # Escape backslashes and other special characters in one pass over the
+    # original characters
+    text = re.sub(r"([\\*_`~#+\-=.|><\[\]()])", r"\\\1", text)
 
     return text
 
@@ -54,16 +49,13 @@ def handle_text(element: NavigableString, context: dict) -> str:
 def get_child_context(parent_context: dict, parent_element: Tag) -> dict:
     """
     Creates a child context based on parent context and element type.
-    Tracks nesting levels, list types, table context, and other structural information.
+    Tracks nesting levels, list types and list-item context.
     """
-    # Deep copy parent context to avoid ANY mutation issues
-    child_context = copy.deepcopy(parent_context)
+    # Shallow copy parent context; every live value is a scalar
+    child_context = dict(parent_context)
     
     # Update based on parent element type
     tag_name = parent_element.name
-    
-    # Track the immediate parent type
-    child_context['parent_type'] = parent_context.get('type', 'root')
     
     # Update type based on current tag
     child_context['type'] = tag_name
@@ -78,26 +70,7 @@ def get_child_context(parent_context: dict, parent_element: Tag) -> dict:
     elif tag_name == 'li':
         # Inherit indent level from parent list
         child_context['indent_level'] = parent_context.get('indent_level', 0)
-        # Set parent_type to the actual list type (ul or ol)
-        child_context['parent_type'] = parent_context.get('parent_list_type', 'root')
-        # Note: List item index tracking would need to be done differently
-        # when we implement list formatting
             
-    # Handle table contexts
-    elif tag_name == 'table':
-        child_context['in_table'] = True
-        
-    elif tag_name == 'tr':
-        child_context['in_table'] = parent_context.get('in_table', False)
-        # Note: Row/column tracking would be done locally in format_table
-            
-    elif tag_name in ['td', 'th']:
-        child_context['in_table'] = parent_context.get('in_table', False)
-        child_context['in_table_cell'] = True
-            
-    elif tag_name in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
-        child_context['heading_level'] = int(tag_name[1])
-    
     # Propagate critical context flags for complex nesting
     # List item context propagates to all descendants
     if parent_context.get('type') == 'li' or parent_context.get('in_list_item'):
@@ -106,18 +79,10 @@ def get_child_context(parent_context: dict, parent_element: Tag) -> dict:
         if tag_name in ['p', 'table', 'ul', 'ol', 'figure']:
             child_context['indent_level'] = parent_context.get('indent_level', 0)
     
-    # Table cell context propagates to all descendants
-    if parent_context.get('in_table_cell'):
-        child_context['in_table_cell'] = True
-    
-    # Table context propagates
-    if parent_context.get('in_table'):
-        child_context['in_table'] = True
-    
     return child_context
 
 
-def apply_inline_formatting(tag_name: str, contents: str, attrs: dict, context: dict) -> str:
+def apply_inline_formatting(tag_name: str, contents: str, attrs: dict) -> str:
     """
     Applies inline markdown formatting based on tag type.
     
@@ -125,7 +90,6 @@ def apply_inline_formatting(tag_name: str, contents: str, attrs: dict, context: 
         tag_name: Name of the inline tag (a, b, strong, i, em, u, sup, sub)
         contents: Already processed inner content
         attrs: Tag attributes
-        context: Current processing context
     
     Returns:
         Formatted markdown string
@@ -174,18 +138,14 @@ def apply_inline_formatting(tag_name: str, contents: str, attrs: dict, context: 
         return contents
 
 
-def format_list(tag_name: str, contents: str, attrs: dict, context: dict) -> str:
-    return contents
-
-
-def format_list_item(tag_name: str, contents: str, attrs: dict, context: dict) -> str:
-    # Check parent_list_type, not parent_type!
-    parent_list_type = context.get('parent_list_type')  # CHANGED THIS LINE
+def format_list_item(contents: str, context: dict) -> str:
+    # Check parent_list_type
+    parent_list_type = context.get('parent_list_type')
     
-    if parent_list_type == 'ul':  # CHANGED THIS LINE
+    if parent_list_type == 'ul':
         return format_ul_item(contents, context)
-    elif parent_list_type == 'ol':  # CHANGED THIS LINE
-        return format_ol_item(contents, attrs, context)
+    elif parent_list_type == 'ol':
+        return format_ol_item(contents, context)
     else:
         # Fallback - could be a list item not in a list context (edge case)
         return contents
@@ -227,7 +187,7 @@ def format_ul_item(contents: str, context: dict) -> str:
     return '\n'.join(result)
 
 
-def format_ol_item(contents: str, attrs: dict, context: dict) -> str:
+def format_ol_item(contents: str, context: dict) -> str:
     indent_level = context.get('indent_level', 0)
     indent = '    ' * max(0, indent_level - 1)
     
@@ -295,15 +255,11 @@ def format_ol_item(contents: str, attrs: dict, context: dict) -> str:
     return '\n'.join(result)
 
 
-def format_table(tag_name: str, contents: str, attrs: dict, context: dict, element: Tag = None) -> str:
+def format_table(contents: str, context: dict, element: Tag) -> str:
     """
     Format tables with proper structure, handling colspan/rowspan.
     Creates a 2D grid representation first, then converts to markdown.
     """
-    if not element:
-        # Fallback if no element provided
-        return contents
-    
     # First, analyze table structure to create a 2D grid
     rows = element.find_all('tr', recursive=False)
     if not rows:
@@ -396,18 +352,15 @@ def format_table(tag_name: str, contents: str, attrs: dict, context: dict, eleme
     return '\n'.join(md_lines)
 
 
-def format_math(tag_name: str, contents: str, attrs: dict, context: dict, element: Tag = None) -> str:
+def format_math(contents: str, element: Tag) -> str:
     """
     Format math content as inline or display math.
     Contents should contain only the LaTeX from the annotation tag.
     """
     # Find the annotation tag within the math element
-    if element:
-        annotation = element.find('annotation')
-        if annotation:
-            latex = annotation.get_text().strip()
-        else:
-            latex = contents.strip()
+    annotation = element.find('annotation')
+    if annotation:
+        latex = annotation.get_text().strip()
     else:
         latex = contents.strip()
     
@@ -429,8 +382,8 @@ def format_math(tag_name: str, contents: str, attrs: dict, context: dict, elemen
         is_display = True
     
     # For this specific case, since it had displaystyle, it's display math
-    if element and element.find('annotation'):
-        annotation_text = element.find('annotation').get_text()
+    if annotation:
+        annotation_text = annotation.get_text()
         if '\\displaystyle' in annotation_text:
             is_display = True
     
@@ -442,17 +395,7 @@ def format_math(tag_name: str, contents: str, attrs: dict, context: dict, elemen
         return f'${latex}$'
 
 
-def format_figure(tag_name: str, contents: str, attrs: dict, context: dict) -> str:
-    """
-    Format figure elements. 
-    By this point, img and figcaption children are already processed.
-    """
-    # Figure is just a container, return its contents
-    # The img and figcaption inside are already formatted
-    return contents
-
-
-def format_figcaption(tag_name: str, contents: str, attrs: dict, context: dict) -> str:
+def format_figcaption(contents: str, context: dict) -> str:
     """
     Format figcaption as a blockquote with > prefix.
     Handle indentation if nested.
@@ -493,10 +436,11 @@ def apply_block_formatting(tag_name: str, contents: str, attrs: dict, context: d
         return '---\n'
     
     elif tag_name in ['ul', 'ol']:
-        return format_list(tag_name, contents, attrs, context)
+        # Lists are containers; item formatting happens on the li children
+        return contents
     
     elif tag_name == 'li':
-        return format_list_item(tag_name, contents, attrs, context)
+        return format_list_item(contents, context)
     
     elif tag_name == 'img':
         src = attrs.get('src', '')
@@ -512,22 +456,22 @@ def apply_block_formatting(tag_name: str, contents: str, attrs: dict, context: d
         level = int(tag_name[1])  # Extract from tag_name, not context
         return '#' * level + ' ' + contents + '\n\n'
     
-    # BUG FIX: Add missing 'table' case
     elif tag_name == 'table':
-        return format_table(tag_name, contents, attrs, context, element)
+        return format_table(contents, context, element)
     
     elif tag_name in ['tr', 'td', 'th', 'thead', 'tbody', 'tfoot']:
         # Table sub-elements are handled by their parent processors
         return contents
     
     elif tag_name == 'math':
-        return format_math(tag_name, contents, attrs, context, element)
+        return format_math(contents, element)
     
     elif tag_name == 'figure':
-        return format_figure(tag_name, contents, attrs, context)
+        # Figure is just a container; img and figcaption are already formatted
+        return contents
     
     elif tag_name == 'figcaption':
-        return format_figcaption(tag_name, contents, attrs, context)
+        return format_figcaption(contents, context)
     
     # Math-related tags that appear inside <math>
     elif tag_name in ['mi', 'mo', 'mn', 'mtext', 'mrow', 'mfrac', 'msqrt', 'mroot', 
@@ -618,14 +562,9 @@ def process_element(element: Union[NavigableString, Tag], context: dict = None) 
         return handle_text(element, context)
 
     elif isinstance(element, Tag):
-        # Step 5: Get all attributes as-is
-        attrs = element.attrs.copy()
-        
-        # Minimal handling only for required attributes
-        if element.name == 'a' and 'href' not in attrs:
-            attrs['href'] = ''
-        if element.name == 'img' and 'src' not in attrs:
-            attrs['src'] = ''
+        # Step 5: Get all attributes as-is; required attributes fall back to
+        # the defaults read at their use sites
+        attrs = element.attrs
         
         # Special handling for li elements
         if element.name == 'li':
@@ -649,10 +588,12 @@ def process_element(element: Union[NavigableString, Tag], context: dict = None) 
                 # Then format as list item
                 return apply_block_formatting('li', p_md, attrs, context)
         
-        # Step 6: Recurse into tag contents
+        # Step 6: Recurse into tag contents with one context shared by all
+        # children
+        child_context = get_child_context(context, element)
         child_contents: List[str] = []
         for child in element.children:
-            child_md = process_element(child, get_child_context(context, element))
+            child_md = process_element(child, child_context)
             if child_md:
                 child_contents.append(child_md)
 
@@ -660,7 +601,7 @@ def process_element(element: Union[NavigableString, Tag], context: dict = None) 
 
         # Steps 7-8: Apply formatting based on tag type
         if element.name in inline_tags:
-            return apply_inline_formatting(element.name, contents, attrs, context)
+            return apply_inline_formatting(element.name, contents, attrs)
         else:
             # Pass original element for tables that need structure
             # BUG FIX: Also pass element for 'math' tag
