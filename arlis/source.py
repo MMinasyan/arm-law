@@ -353,8 +353,8 @@ def _parse_connections(structure: _PageStructure) -> dict:
     return result
 
 
-def _validate_page_identity(soup, act_id: int) -> None:
-    """Validate that page-owned identity evidence matches the requested act ID.
+def _validate_page_identity(soup, act_id: int | None) -> int:
+    """Validate page-owned identity evidence and return the served act ID.
 
     Requires exactly one #share-act, one #download-act, one #print-act modal.
     Share group is every a[data-sharer] inside #share-act; each must have
@@ -363,6 +363,9 @@ def _validate_page_identity(soup, act_id: int) -> None:
     planned location.href expression with SAME opening/closing quote.
     Print group is every a[href] inside #print-act; each must full-match
     exact relative print grammar. Each group non-empty. All IDs agree.
+    A concrete URL additionally requires the requested act_id among them;
+    act_id None (a /latest version selector) skips only that requested-number
+    comparison, and the consistent served identity is returned either way.
     """
     # Require exactly one of each modal
     share_modals = soup.select("#share-act")
@@ -431,7 +434,7 @@ def _validate_page_identity(soup, act_id: int) -> None:
             )
         found_ids.add(int(match.group(1)))
 
-    if act_id not in found_ids:
+    if act_id is not None and act_id not in found_ids:
         raise ValueError(
             f"page identity mismatch: requested {act_id}, "
             f"page shows {sorted(found_ids)}"
@@ -440,6 +443,7 @@ def _validate_page_identity(soup, act_id: int) -> None:
         raise ValueError(
             f"page identity conflict: multiple IDs found {sorted(found_ids)}"
         )
+    return next(iter(found_ids))
 
 
 def _validate_change_couples_exact(couples_wrapper, role: str) -> None:
@@ -1194,18 +1198,19 @@ def _validate_relation_urls(relations: dict) -> None:
                 )
 
 
-def _parse_act(html: str, act_id: int, url: str) -> dict:
+def _parse_act(html: str, act_id: int | None, url: str) -> dict:
     soup = BeautifulSoup(html, "lxml")
 
-    # Validate page identity and structure before constructing record
-    _validate_page_identity(soup, act_id)
+    # Validate page identity and structure before constructing record.
+    # The served identity (not the requested one) is the page's truth.
+    served_id = _validate_page_identity(soup, act_id)
     structure = _validate_tab_structure(soup)
 
     title_div = soup.select_one(".act-info__title")
     title = title_div.get_text(strip=True) if title_div else ""
 
     result: dict = {
-        "id": act_id,
+        "id": served_id,
         "url": url,
         "title": title,
         "source": "arlis",

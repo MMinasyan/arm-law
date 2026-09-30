@@ -3,10 +3,20 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from .client import REQUEST_TIMEOUT, new_session, normalize_act_url
+from .client import REQUEST_TIMEOUT, new_session
 from .source import _PAGE_SIZE, _build_params, _fetch_page, _to_iso_date
 
 _DATE_KEYS = ("enactment_date", "effective_date")
+
+_RESULT_LIMIT = 20
+_ACTIVE_STATUSES = "1,4,5,7,9,12"
+
+_METADATA_LABELS = (
+    ("number", "Number"),
+    ("enactment_date", "Enactment date"),
+    ("effective_date", "Effective date"),
+    ("status", "Status"),
+)
 
 
 def _check_iso_date(value: object, arg: str) -> None:
@@ -21,34 +31,37 @@ def _check_iso_date(value: object, arg: str) -> None:
 
 
 def search_acts(
-    query: str = "",
-    enacted_after: str | None = None,
-    enacted_before: str | None = None,
-    limit: int = 20,
-) -> list[dict]:
+    search_string: str,
+    data_after: str | None = None,
+    date_before: str | None = None,
+    active: bool = True,
+) -> str:
     """Find acts on arlis.am by free text and/or enactment-date range.
 
-    Use it to find acts by free-text query and/or enactment-date range;
-    each returned card's id/url feeds the read tools' ref. Cards are
-    bounded by limit, newest first by enactment date; each card is
-    {"id", "url" (direct form), "title", "number"?, "enactment_date"
-    (ISO)?, "effective_date" (ISO)?, "status"?}.
+    Returns plain text: `Search results (N):` followed by numbered
+    entries with each act's full title, URL and available metadata, or
+    exactly `No acts found.` when nothing matches. The returned URLs
+    feed get_act for reading and saving.
     """
-    if not (isinstance(limit, int) and limit > 0):
-        raise ValueError(f"limit must be a positive int, got {limit!r}")
-    if enacted_after is not None:
-        _check_iso_date(enacted_after, "enacted_after")
-    if enacted_before is not None:
-        _check_iso_date(enacted_before, "enacted_before")
+    simple_text = (
+        search_string.replace("և", "ԵՎ")
+        .replace("եւ", "ԵՎ")
+        .replace("Եւ", "ԵՎ")
+        .upper()
+    )
+    if data_after is not None:
+        _check_iso_date(data_after, "data_after")
+    if date_before is not None:
+        _check_iso_date(date_before, "date_before")
 
-    filters: dict = {}
-    if query:
-        filters["simple_text"] = query
-    if enacted_after is not None or enacted_before is not None:
+    filters: dict = {"simple_text": simple_text}
+    if data_after is not None or date_before is not None:
         filters["enactment_date"] = {
-            "start": enacted_after or "",
-            "end": enacted_before or "",
+            "start": data_after or "",
+            "end": date_before or "",
         }
+    if active:
+        filters["status"] = _ACTIVE_STATUSES
     params = _build_params(filters)
 
     session = new_session()
@@ -57,22 +70,38 @@ def search_acts(
     while True:
         cards, total = _fetch_page(session, params, page, REQUEST_TIMEOUT, "DESC")
         results.extend(_clean_card(card) for card in cards)
-        if len(results) >= limit:
+        if len(results) >= _RESULT_LIMIT:
             break
         if total is None or page * _PAGE_SIZE >= total:
             break
         page += 1
-    return results[:limit]
+    return _render_results(results[:_RESULT_LIMIT])
+
+
+def _render_results(results: list[dict]) -> str:
+    """Numbered plain-text entries; no IDs, no JSON wrapper."""
+    if not results:
+        return "No acts found."
+    entries = []
+    for number, card in enumerate(results, start=1):
+        lines = [f"{number}. {card['title']}", f"URL: {card['url']}"]
+        for key, label in _METADATA_LABELS:
+            value = card.get(key)
+            if value:
+                lines.append(f"{label}: {value}")
+        entries.append("\n".join(lines))
+    return f"Search results ({len(results)}):\n\n" + "\n\n".join(entries)
 
 
 def _clean_card(card: dict) -> dict:
-    """Card with ISO dates, direct-form url, no scrape-moment fields.
+    """Card with ISO dates and no scrape-moment fields.
 
-    A date field is absent when the card's about-item is missing or its
-    value is empty (undated acts are a normal site state).
+    The URL is kept exactly as the source parser returned it, including
+    /latest and fragments. A date field is absent when the card's
+    about-item is missing or its value is empty (undated acts are a
+    normal site state).
     """
     out = {k: v for k, v in card.items() if k != "discovered"}
-    out["url"] = normalize_act_url(out["id"])
     for key in _DATE_KEYS:
         value = out.get(key)
         if value:

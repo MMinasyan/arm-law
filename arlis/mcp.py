@@ -8,37 +8,29 @@ mcp = MCPServer(
     instructions=(
         "Legal research tools for arlis.am, the Armenian legal information "
         "system. search_acts finds acts (laws, decisions, orders) by free "
-        "text and enactment-date range; get_act returns one act's metadata, "
-        "changes and relations; get_act_markdown also converts the full act "
-        "text to markdown. Act arguments accept either an act URL or the "
-        "numeric act id. Search before reading: search_acts returns the "
-        "ids and titles that get_act / get_act_markdown accept."
+        "text and enactment-date range and returns each act's full title, "
+        "URL and available metadata. get_act takes one of those URLs, "
+        "saves the act's metadata and full text as markdown to a local "
+        ".arlis/<number>.md file and returns the absolute saved path "
+        "with a short line-numbered heading structure. Search first, "
+        "then pass a returned URL to get_act to read and save the act."
     ),
 )
 
 
-@mcp.tool(description=arlis.search_acts.__doc__)
-def search_acts(query: str = "", enacted_after: str | None = None,
-               enacted_before: str | None = None, limit: int = 20) -> list[dict]:
+@mcp.tool(description=arlis.search_acts.__doc__, structured_output=False)
+def search_acts(search_string: str, data_after: str | None = None,
+                date_before: str | None = None, active: bool = True) -> str:
     try:
-        return arlis.search_acts(query=query, enacted_after=enacted_after,
-                                 enacted_before=enacted_before, limit=limit)
+        return arlis.search_acts(search_string, data_after, date_before, active)
     except Exception as e:
         raise ToolError(str(e)) from e
 
 
-@mcp.tool(description=arlis.get_act.__doc__)
-def get_act(ref: str | int) -> dict:
+@mcp.tool(description=arlis.get_act.__doc__, structured_output=False)
+def get_act(url: str, output_dir: str | None = None) -> str:
     try:
-        return arlis.get_act(ref)
-    except Exception as e:
-        raise ToolError(str(e)) from e
-
-
-@mcp.tool(description=arlis.get_act_markdown.__doc__)
-def get_act_markdown(ref: str | int) -> dict:
-    try:
-        return arlis.get_act_markdown(ref)
+        return arlis.get_act(url, output_dir)
     except Exception as e:
         raise ToolError(str(e)) from e
 

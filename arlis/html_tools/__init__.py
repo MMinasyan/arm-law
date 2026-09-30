@@ -1,27 +1,10 @@
-"""HTML processing tools for cleaning and restructuring messy HTML."""
-
-
+"""Vendored HTML processing engine for arlis documents."""
 from .lists import add_lists
+from .structures import clean_html_tables
+from .processor import clean_html
 from .utilities import (
-    to_soup,
     add_style_tag,
+    merge_same_url_links,
     remove_empty_tags,
-    remove_word_comments,
-    merge_same_url_links
+    to_soup,
 )
-
-
-__all__ = [
-    'clean_html',
-    'simple_process',
-    'convert_to_html',
-    'add_lists',
-    'clean_html_tables',
-    'split_p_by_br',
-    'process_meter',
-    'to_soup',
-    'add_style_tag',
-    'remove_empty_tags',
-    'remove_word_comments',
-    'merge_same_url_links',
-]
