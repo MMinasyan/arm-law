@@ -6,6 +6,7 @@ import re
 import tempfile
 from pathlib import Path
 
+from bs4 import BeautifulSoup
 from lxml.html import document_fromstring, tostring
 
 from .client import REQUEST_TIMEOUT, new_session
@@ -14,12 +15,11 @@ from .source import _ARLIS_ACT_URL_RE, _parse_act, _to_iso_date
 from .html2md import html_to_markdown
 from .html_tools import (
     add_lists,
-    add_style_tag,
     clean_html,
     clean_html_tables,
+    ensure_document,
     merge_same_url_links,
     remove_empty_tags,
-    to_soup,
 )
 
 _ACT_ID_RE = re.compile(r"/acts/([1-9][0-9]*)")
@@ -85,12 +85,12 @@ def get_act(url: str, output_dir: str | None = None) -> str:
 
 
 def main_process(html: str) -> str:
-    """Generic html_tools processing chain for arlis documents."""
-    soup = to_soup(html=html)
-    soup = clean_html(soup, base_url="https://www.arlis.am/")
-    soup = add_lists(soup, source="arlis", trailing_multiplier=2)
+    """html_tools processing chain for arlis documents."""
+    soup = BeautifulSoup(html, "html.parser")
+    soup = clean_html(soup)
+    soup = add_lists(soup)
     soup = clean_html_tables(soup)
-    add_style_tag(soup)
+    ensure_document(soup)
     soup = merge_same_url_links(soup)
     remove_empty_tags(soup)
     soup.smooth()

@@ -1,12 +1,10 @@
-# All constants (ALLOWED_TAGS, ALLOWED_ATTRIBUTES, etc.)
-# convert_to_html() - LibreOffice conversion
 # simple_process() - lightweight processing
 # clean_html() - main processing pipeline
 
 import re
 from bs4 import NavigableString, Tag, Comment
 from .utilities import (
-    to_soup, has_text, apply_text_transform, merge_same_tags,
+    has_text, apply_text_transform, merge_same_tags,
     remove_unnecessary_br, remove_nbsp, remove_empty_tags,
     fix_relative_links, remove_unsafe_urls, clean_control_characters,
     remove_visual_redundancy,
@@ -18,13 +16,11 @@ from .structures import (
 
 
 
-def simple_process(soup=None, html=None, base_url=None):
+def simple_process(soup):
     """
     Lightweight HTML cleaning that focuses on removing unnecessary elements and attributes.
     This is designed to be idempotent with the full clean_html processing.
     """
-    soup = to_soup(soup, html)
-    
     # Remove comments
     for comment in soup.find_all(string=lambda text: isinstance(text, Comment)):
         comment.extract()
@@ -50,8 +46,7 @@ def simple_process(soup=None, html=None, base_url=None):
     
     soup = fix_incorrect_structures(soup)
     
-    if base_url:
-        soup = fix_relative_links(soup, base_url)
+    soup = fix_relative_links(soup)
     
     # Remove potentially dangerous URLs
     soup = remove_unsafe_urls(soup)
@@ -70,11 +65,9 @@ def simple_process(soup=None, html=None, base_url=None):
     
     return soup
 
-def clean_html(soup=None, html=None, base_url=None):
-    soup = to_soup(soup, html)
-    
+def clean_html(soup):
     # Apply simple processing first
-    soup = simple_process(soup=soup, base_url=base_url)
+    soup = simple_process(soup)
     
     # Define additional tags for complex processing
     structural_tags = {'p', 'ul', 'ol', 'table', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'img'}

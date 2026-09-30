@@ -10,7 +10,10 @@ arm_numerals = ['ա', 'բ', 'գ', 'դ', 'ե', 'զ', 'է', 'ը', 'թ', 'ժ',
 sorted_arm_numerals = sorted(arm_numerals, key=len, reverse=True)
 arm_pattern = "|".join(re.escape(num) for num in sorted_arm_numerals)
 
-def get_list_info(p, source=None):
+# Comparative length rule: absorb an element if n <= multiplier * n_prev.
+_TRAILING_MULTIPLIER = 2
+
+def get_list_info(p):
     """Detect if paragraph is a list item and return its properties."""
     text = p.text
     if m := re.match(r"(\s*\d{1,3}[\.․](?!\d)\s*)(.*)", text):
@@ -35,16 +38,10 @@ def get_list_info(p, source=None):
         number = ord(letter) - ord('a') + 1
         item_text = m.group(2)
         return (3, number, item_text, prefix)
-    elif source == "arlis":
-        if m := re.match(r"(\s*(?:[•◦∙●]\s*|-\s+))(.*)", text):
-            prefix = m.group(1)
-            item_text = m.group(2)
-            return (4, None, item_text, prefix)
-    else:
-        if m := re.match(r"(\s*[•◦∙●]\s*)(.*)", text):
-            prefix = m.group(1)
-            item_text = m.group(2)
-            return (4, None, item_text, prefix)
+    elif m := re.match(r"(\s*(?:[•◦∙●]\s*|-\s+))(.*)", text):
+        prefix = m.group(1)
+        item_text = m.group(2)
+        return (4, None, item_text, prefix)
     return None
 
 
@@ -159,7 +156,7 @@ def add_prefixes_to_ol_li(soup):
         ol.attrs.pop('start', None)
     return soup
 
-def process_lists(soup, element, source=None, trailing_multiplier=3):
+def process_lists(soup, element):
     """
     Convert pseudo-lists to real lists with comparative length rule for all absorption decisions.
     Section boundaries (including Հոդված paragraphs) always terminate lists.
@@ -167,9 +164,6 @@ def process_lists(soup, element, source=None, trailing_multiplier=3):
     Args:
         soup: BeautifulSoup object
         element: Element to process
-        source: Optional source identifier
-        trailing_multiplier: Multiplier for comparative length rule (default: 3)
-                           Elements absorbed if n <= trailing_multiplier * n_prev
     """
     # Tags that truly indicate a new document section - should never be inside a list item
     SECTION_BOUNDARY_TAGS = {'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr'}
@@ -229,7 +223,7 @@ def process_lists(soup, element, source=None, trailing_multiplier=3):
                     # Hit a boundary, no continuation possible
                     return True
                 if all_children[k].name == 'p':
-                    info = get_list_info(all_children[k], source)
+                    info = get_list_info(all_children[k])
                     if info:
                         if info[0] == level:
                             # Same level - check if it continues the sequence
@@ -264,7 +258,7 @@ def process_lists(soup, element, source=None, trailing_multiplier=3):
             if is_section_boundary(all_children[k], k, level, expected_number):
                 return False
             if all_children[k].name == 'p':
-                info = get_list_info(all_children[k], source)
+                info = get_list_info(all_children[k])
                 if info:
                     if info[0] == level:
                         # Same level - check if it continues the sequence
@@ -279,7 +273,7 @@ def process_lists(soup, element, source=None, trailing_multiplier=3):
                     # For unordered lists, check if next paragraph is also a bullet
                     # If not, bullets are not adjacent and likely in different lists
                     if k + 1 < len(all_children) and all_children[k + 1].name == 'p':
-                        next_info = get_list_info(all_children[k + 1], source)
+                        next_info = get_list_info(all_children[k + 1])
                         if not (next_info and next_info[0] == 4):
                             return False
                     else:
@@ -403,7 +397,7 @@ def process_lists(soup, element, source=None, trailing_multiplier=3):
                 lis = child.find_all('li', recursive=False)
                 if lis:
                     last_li = lis[-1]
-                    info = get_list_info(last_li, source)
+                    info = get_list_info(last_li)
                     if info:
                         level, number = info[0], info[1]
                         expected = number + 1 if level < 4 else None
@@ -429,7 +423,7 @@ def process_lists(soup, element, source=None, trailing_multiplier=3):
                     is_trailing = True
                     for k in range(i + 1, len(all_children)):
                         if all_children[k].name == 'p':
-                            info = get_list_info(all_children[k], source)
+                            info = get_list_info(all_children[k])
                             if info and info[0] == stack[-1][0]:
                                 is_trailing = False
                                 break
@@ -449,7 +443,7 @@ def process_lists(soup, element, source=None, trailing_multiplier=3):
                         n = trailing_count + 1  # +1 conceptually for consistency
                         n_prev = get_n_prev_for_trailing(stack)
                         
-                        if n <= trailing_multiplier * n_prev:
+                        if n <= _TRAILING_MULTIPLIER * n_prev:
                             # Absorb
                             li = stack[-1][3]
                             child.extract()
@@ -469,7 +463,7 @@ def process_lists(soup, element, source=None, trailing_multiplier=3):
             continue
         
         p = child
-        list_info = get_list_info(p, source)
+        list_info = get_list_info(p)
         
         if list_info:
             level, number, item_text, prefix = list_info
@@ -554,7 +548,7 @@ def process_lists(soup, element, source=None, trailing_multiplier=3):
                         # Pre-existing list is a structural boundary - stop searching
                         break
                     if all_children[j].name == 'p':
-                        if get_list_info(all_children[j], source) is not None:
+                        if get_list_info(all_children[j]) is not None:
                             # Found next list item
                             break
                     j += 1
@@ -562,7 +556,7 @@ def process_lists(soup, element, source=None, trailing_multiplier=3):
                 next_p = None
                 next_info = None
                 if j < len(all_children) and all_children[j].name == 'p':
-                    temp_info = get_list_info(all_children[j], source)
+                    temp_info = get_list_info(all_children[j])
                     if temp_info:
                         next_level_temp, next_number_temp = temp_info[0], temp_info[1]
 
@@ -676,7 +670,7 @@ def process_lists(soup, element, source=None, trailing_multiplier=3):
                                 # No previous item found, use current item as baseline
                                 n_prev = stack[-1][4]
                             
-                            if n <= trailing_multiplier * n_prev:
+                            if n <= _TRAILING_MULTIPLIER * n_prev:
                                 # Absorb to current item
                                 li = stack[-1][3]
                                 if start_point and start_point != next_p:
@@ -741,7 +735,7 @@ def process_lists(soup, element, source=None, trailing_multiplier=3):
                             else:
                                 n_prev = stack[-1][4]
                             
-                            if n <= trailing_multiplier * n_prev:
+                            if n <= _TRAILING_MULTIPLIER * n_prev:
                                 li = stack[-1][3]
                                 if start_point and start_point != next_p:
                                     wrap_leading_text(soup, li)
@@ -783,7 +777,7 @@ def process_lists(soup, element, source=None, trailing_multiplier=3):
                         n = trailing_count + 1  # +1 for consistency
                         n_prev = get_n_prev_for_trailing(stack)
 
-                        if n <= trailing_multiplier * n_prev:
+                        if n <= _TRAILING_MULTIPLIER * n_prev:
                             # Absorb trailing elements
                             li = stack[-1][3]
                             if start_point:
@@ -825,7 +819,7 @@ def process_lists(soup, element, source=None, trailing_multiplier=3):
                     is_trailing = True
                     for k in range(i + 1, len(all_children)):
                         if all_children[k].name == 'p':
-                            info = get_list_info(all_children[k], source)
+                            info = get_list_info(all_children[k])
                             if info and info[0] == stack[-1][0]:
                                 is_trailing = False
                                 break
@@ -844,7 +838,7 @@ def process_lists(soup, element, source=None, trailing_multiplier=3):
                         n = trailing_count + 1
                         n_prev = get_n_prev_for_trailing(stack)
                         
-                        if n <= trailing_multiplier * n_prev:
+                        if n <= _TRAILING_MULTIPLIER * n_prev:
                             li = stack[-1][3]
                             p.extract()
                             li.append(p)
@@ -885,7 +879,7 @@ def process_lists(soup, element, source=None, trailing_multiplier=3):
             n = elem_count + 1  # +1 for consistency
             n_prev = get_n_prev_for_trailing(stack)
 
-            if n <= trailing_multiplier * n_prev:
+            if n <= _TRAILING_MULTIPLIER * n_prev:
                 # Absorb trailing elements
                 li = stack[-1][3]
                 wrap_leading_text(soup, li)
@@ -907,7 +901,7 @@ def process_lists(soup, element, source=None, trailing_multiplier=3):
     # Recursive processing for non-paragraph children
     for child in element.children:
         if child.name and child.name not in ['p', 'table', 'ul', 'ol', 'img', 'hr']:
-            process_lists(soup, child, source, trailing_multiplier)
+            process_lists(soup, child)
 
 def join_ul(soup):
     """
@@ -970,24 +964,18 @@ def join_ul(soup):
 
     return soup
 
-def add_lists(soup, source=None, trailing_multiplier=3):
+def add_lists(soup):
     """
     Main function to process lists using comparative length rule for all absorption decisions.
 
     Args:
         soup: BeautifulSoup object to process
-        source: Optional source identifier
-        trailing_multiplier: Multiplier for comparative length rule (default: 3)
 
     Returns:
         soup: Processed BeautifulSoup object with lists converted
     """
 
-    trailing_multiplier = trailing_multiplier if trailing_multiplier is not None else 3
-
     soup = add_prefixes_to_ol_li(soup)
-    process_lists(soup, soup,
-                  source=source,
-                  trailing_multiplier=trailing_multiplier)
+    process_lists(soup, soup)
     soup = join_ul(soup)
     return soup

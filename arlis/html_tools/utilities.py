@@ -1,13 +1,14 @@
-# to_soup(), has_text(), is_empty_element(), has_direct_nonempty_text()
-# clean_control_characters(), remove_nbsp(), remove_word_comments()
+# has_text(), is_empty_element(), has_direct_nonempty_text()
+# clean_control_characters(), remove_nbsp()
 # apply_text_transform(), merge_same_tags(), remove_unnecessary_br()
 # remove_empty_tags(), remove_unsafe_urls(), fix_relative_links()
-# add_style_tag()
-from bs4 import BeautifulSoup, NavigableString, Tag, Comment
-from bs4.element import ResultSet
+# ensure_document()
+from bs4 import NavigableString, Tag, Comment
 import unicodedata
 import re
 from urllib.parse import urljoin, urlparse
+
+from ..source import BASE_URL
 
 
 ALLOWED_TAGS = {
@@ -36,24 +37,6 @@ ALLOWED_ATTRIBUTES = {
 
 CAN_BE_EMPTY = {'br', 'td', 'th', 'img', 'hr'}
 
-
-def to_soup(soup=None, html=None):
-    """Convert input to BeautifulSoup object."""
-    if soup is None and html is None:
-        raise ValueError("Either soup or html must be provided")
-    
-    if soup is None:
-        return BeautifulSoup(html, 'html.parser')
-    elif isinstance(soup, BeautifulSoup):
-        return soup
-    elif isinstance(soup, Tag):
-        return BeautifulSoup(str(soup), 'html.parser')
-    elif isinstance(soup, ResultSet):
-        # This shouldn't happen
-        raise TypeError(f"Expected Tag or BeautifulSoup, got ResultSet")
-    else:
-        # Try to convert whatever it is to BeautifulSoup
-        return BeautifulSoup(str(soup), 'html.parser')
 
 def has_text(input_str):
     """Check if string has meaningful text content."""
@@ -277,10 +260,9 @@ def remove_unsafe_urls(soup):
             del a['href']
     return soup
 
-def fix_relative_links(soup, base_url):
+def fix_relative_links(soup):
     """Convert relative URLs to absolute using proper URL parsing."""
-    if not base_url:
-        return soup
+    base_url = BASE_URL + "/"
         
     # Handle href attributes (links)
     for tag in soup.find_all('a', href=True):
@@ -307,25 +289,8 @@ def fix_relative_links(soup, base_url):
     
     return soup
 
-def add_style_tag(soup):
-    """Add CSS styling for lists and tables."""
-    style_tag = soup.new_tag('style')
-    style_tag.string = """
-    ol {
-        list-style: none;
-    }
-    li {
-        margin-top: 1em;
-    }
-    table {
-        border-collapse: collapse;
-        margin: 1em;
-    }
-    table:not([border]) {
-        border: 1px solid black;
-    }
-    td, th { padding: 10px; }
-"""
+def ensure_document(soup):
+    """Ensure the document is wrapped in html/head/body structure."""
     if soup.html is None:
         html = soup.new_tag('html')
         for content in soup.contents[:]:
@@ -338,7 +303,6 @@ def add_style_tag(soup):
     if head is None:
         head = soup.new_tag('head')
         html.insert(0, head)
-    head.append(style_tag)
 
     if html.body is None:
         body = soup.new_tag('body')
