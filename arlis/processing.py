@@ -12,9 +12,6 @@ def preprocess(record: dict) -> str:
             paragraph.decompose()
     return str(soup)
 
-def clean(full_html: str) -> str:
-    return full_html
-
 
 def postprocess(full_html: str) -> str:
     """
@@ -42,6 +39,58 @@ def postprocess(full_html: str) -> str:
             if strong.get_text(strip=True):
                 return True
         return False
+
+    def nothing_follows(target):
+        """True unless a Tag outside target's subtree appears after target in body."""
+        found = False
+        for elem in body.descendants:
+            if elem == target:
+                found = True
+            elif found and isinstance(elem, Tag):
+                if target not in elem.parents:
+                    return False
+        return True
+
+    def first_strong_cell_child(table):
+        """First child of the table's first non-empty cell, when it is a strong tag."""
+        if table.find('thead'):
+            return None
+        first_nonempty = None
+        for cell in table.find_all(['td', 'th']):
+            if cell.get_text(strip=True):
+                first_nonempty = cell
+                break
+        if not first_nonempty:
+            return None
+        first_child = None
+        for child in first_nonempty.children:
+            if isinstance(child, NavigableString):
+                if child.strip():
+                    break  # Text before strong
+            elif isinstance(child, Tag):
+                first_child = child
+                break
+        if first_child and first_child.name == 'strong':
+            return first_child
+        return None
+
+    def relocate_suffix(container, anchor, after_elem):
+        """Collect anchor and its following non-whitespace direct children,
+        extract them, then insert them after after_elem in original order."""
+        elements_to_move = []
+        found = False
+        for elem in list(container.children):
+            if elem == anchor:
+                found = True
+            if found and (isinstance(elem, Tag) or (isinstance(elem, NavigableString) and elem.strip())):
+                elements_to_move.append(elem)
+        if not elements_to_move:
+            return
+        # Extract everything first, then re-insert in reverse so order is preserved
+        for elem in elements_to_move:
+            elem.extract()
+        for elem in reversed(elements_to_move):
+            after_elem.insert_after(elem)
 
     # STEP 1: Handle tables at document end
     # Find last table
@@ -93,43 +142,16 @@ def postprocess(full_html: str) -> str:
             if 1 <= len(bold_paragraphs) <= 2:
                 # Check that nothing follows the last paragraph
                 last_elem = bold_paragraphs[-1]
-                found_last = False
-                nothing_after_last = True
-                for elem in body.descendants:
-                    if elem == last_elem:
-                        found_last = True
-                    elif found_last and isinstance(elem, Tag):
-                        if last_elem not in elem.parents:
-                            nothing_after_last = False
-                            break
-
-                if nothing_after_last:
+                if nothing_follows(last_elem):
                     # Check table requirements
-                    if not last_table.find('thead'):
-                        first_nonempty = None
-                        for cell in last_table.find_all(['td', 'th']):
-                            if cell.get_text(strip=True):
-                                first_nonempty = cell
-                                break
-
-                        if first_nonempty:
-                            first_child = None
-                            for child in first_nonempty.children:
-                                if isinstance(child, NavigableString):
-                                    if child.strip():
-                                        break  # Text before strong
-                                elif isinstance(child, Tag):
-                                    first_child = child
-                                    break
-
-                            if first_child and first_child.name == 'strong':
-                                # Move table and all bold paragraphs to body end
-                                last_table.extract()
-                                body.append(last_table)
-                                for p in bold_paragraphs:
-                                    p.extract()
-                                    body.append(p)
-                                # Continue to Step 2 (other checks below)
+                    if first_strong_cell_child(last_table):
+                        # Move table and all bold paragraphs to body end
+                        last_table.extract()
+                        body.append(last_table)
+                        for p in bold_paragraphs:
+                            p.extract()
+                            body.append(p)
+                        # Continue to Step 2 (other checks below)
 
             # Check for exception case: table followed by specific p in same li
             next_sibling = last_table.find_next_sibling()
@@ -148,80 +170,26 @@ def postprocess(full_html: str) -> str:
 
                     if alphabetic_only == "ՀԱՎԱՍՏՎԱԾԷԷԼԵԿՏՐՈՆԱՅԻՆՍՏՈՐԱԳՐՈՒԹՅԱՄԲ":
                         # Check that nothing follows the p
-                        found_p = False
-                        nothing_after_p = True
-                        for elem in body.descendants:
-                            if elem == next_sibling:
-                                found_p = True
-                            elif found_p and isinstance(elem, Tag):
-                                if next_sibling not in elem.parents:
-                                    nothing_after_p = False
-                                    break
-
-                        if nothing_after_p:
+                        if nothing_follows(next_sibling):
                             # Check table requirements
-                            if not last_table.find('thead'):
-                                first_nonempty = None
-                                for cell in last_table.find_all(['td', 'th']):
-                                    if cell.get_text(strip=True):
-                                        first_nonempty = cell
-                                        break
-
-                                if first_nonempty:
-                                    first_child = None
-                                    for child in first_nonempty.children:
-                                        if isinstance(child, NavigableString):
-                                            if child.strip():
-                                                break  # Text before strong
-                                        elif isinstance(child, Tag):
-                                            first_child = child
-                                            break
-
-                                    if first_child and first_child.name == 'strong':
-                                        # Remove both table and p, add to body
-                                        last_table.extract()
-                                        next_sibling.extract()
-                                        body.append(last_table)
-                                        body.append(next_sibling)
-                                        # REMOVED: return soup
-                                        # Continue to Step 2
+                            if first_strong_cell_child(last_table):
+                                # Remove both table and p, add to body
+                                last_table.extract()
+                                next_sibling.extract()
+                                body.append(last_table)
+                                body.append(next_sibling)
+                                # REMOVED: return soup
+                                # Continue to Step 2
 
             # Check if table is last element (nothing follows)
-            found_table = False
-            nothing_after = True
-            for elem in body.descendants:
-                if elem == last_table:
-                    found_table = True
-                elif found_table and isinstance(elem, Tag):
-                    if last_table not in elem.parents:
-                        nothing_after = False
-                        break
-
-            if nothing_after:
+            if nothing_follows(last_table):
                 # Check table requirements
-                if not last_table.find('thead'):
-                    first_nonempty = None
-                    for cell in last_table.find_all(['td', 'th']):
-                        if cell.get_text(strip=True):
-                            first_nonempty = cell
-                            break
-
-                    if first_nonempty:
-                        first_child = None
-                        for child in first_nonempty.children:
-                            if isinstance(child, NavigableString):
-                                if child.strip():
-                                    break  # Text before strong
-                            elif isinstance(child, Tag):
-                                first_child = child
-                                break
-
-                        if first_child and first_child.name == 'strong':
-                            # Move table to body
-                            last_table.extract()
-                            body.append(last_table)
-                            # REMOVED: return soup
-                            # Continue to Step 2
+                if first_strong_cell_child(last_table):
+                    # Move table to body
+                    last_table.extract()
+                    body.append(last_table)
+                    # REMOVED: return soup
+                    # Continue to Step 2
 
     # Check for p with all content in strong
     all_p = body.find_all('p')
@@ -237,17 +205,7 @@ def postprocess(full_html: str) -> str:
 
         if in_li:
             # Check if nothing follows it
-            found_p = False
-            nothing_after = True
-            for elem in body.descendants:
-                if elem == last_p:
-                    found_p = True
-                elif found_p and isinstance(elem, Tag):
-                    if last_p not in elem.parents:
-                        nothing_after = False
-                        break
-
-            if nothing_after:
+            if nothing_follows(last_p):
                 # Check if ALL content is in strong tag(s) - no text outside at all
                 has_text_outside_strong = False
 
@@ -316,31 +274,9 @@ def postprocess(full_html: str) -> str:
         # Look for our specific table in this last li
         table_to_move = None
         for table in last_li.find_all('table'):
-            # Skip if table has thead
-            if table.find('thead'):
-                continue
-
-            # Check first non-empty cell for "Հայաստանի Հանրապետության"
-            first_nonempty = None
-            for cell in table.find_all(['td', 'th']):
-                if cell.get_text(strip=True):
-                    first_nonempty = cell
-                    break
-
-            if not first_nonempty:
-                continue
-
-            # Check if starts with strong tag
-            first_child = None
-            for child in first_nonempty.children:
-                if isinstance(child, NavigableString):
-                    if child.strip():
-                        break  # Text before strong
-                elif isinstance(child, Tag):
-                    first_child = child
-                    break
-
-            if not first_child or first_child.name != 'strong':
+            # Requirements: no thead, first non-empty cell starts with a strong tag
+            first_child = first_strong_cell_child(table)
+            if not first_child:
                 continue
 
             # Check if strong text starts with "Հայաստանի Հանրապետության"
@@ -352,27 +288,9 @@ def postprocess(full_html: str) -> str:
             continue
 
         # Found a matching table in the last li
-        # Collect the table and everything after it in that li
-        elements_to_move = []
-        table_found = False
-
-        for elem in list(last_li.children):
-            if elem == table_to_move:
-                table_found = True
-            if table_found:
-                if isinstance(elem, Tag) or (isinstance(elem, NavigableString) and elem.strip()):
-                    elements_to_move.append(elem)
-
-        if not elements_to_move:
-            continue
-
-        # Extract and move after the top-level list
-        for elem in elements_to_move:
-            elem.extract()
-
-        # Insert after the top-level list in order
-        for elem in reversed(elements_to_move):
-            top_list.insert_after(elem)
+        # Collect the table and everything after it in that li,
+        # then extract and insert after the top-level list in order
+        relocate_suffix(last_li, table_to_move, top_list)
 
     # STEP 3: Extract "Հավելված" (Appendix) elements from deepest last li
     # Only p and table can be direct children of li at this point
@@ -383,10 +301,9 @@ def postprocess(full_html: str) -> str:
         """Recursively find the deepest last li in a list structure."""
         if not list_elem or list_elem.name not in ['ul', 'ol']:
             return None
-        li_children = [c for c in list_elem.children if isinstance(c, Tag) and c.name == 'li']
-        if not li_children:
+        last_li = find_last_li_in_structure(list_elem)
+        if not last_li:
             return None
-        last_li = li_children[-1]
         # If last li contains nested lists, recurse into the last one
         nested = last_li.find_all(['ul', 'ol'], recursive=False)
         if nested:
@@ -425,22 +342,8 @@ def postprocess(full_html: str) -> str:
         if not appendix_elem:
             continue
 
-        # Collect appendix_elem and all following siblings
-        elements_to_move = []
-        found = False
-        for elem in list(last_li.children):
-            if elem == appendix_elem:
-                found = True
-            if found and (isinstance(elem, Tag) or (isinstance(elem, NavigableString) and elem.strip())):
-                elements_to_move.append(elem)
-
-        if not elements_to_move:
-            continue
-
-        # Extract and insert after the top-level list
-        for elem in elements_to_move:
-            elem.extract()
-        for elem in reversed(elements_to_move):
-            top_list.insert_after(elem)
+        # Collect appendix_elem and all following siblings,
+        # extract them and insert after the top-level list
+        relocate_suffix(last_li, appendix_elem, top_list)
 
     return str(soup)
