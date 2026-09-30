@@ -68,7 +68,7 @@ def search_acts(
     results: list[dict] = []
     page = 1
     while True:
-        cards, total = _fetch_page(session, params, page, REQUEST_TIMEOUT, "DESC")
+        cards, total = _fetch_page(session, params, page, REQUEST_TIMEOUT)
         results.extend(_clean_card(card) for card in cards)
         if len(results) >= _RESULT_LIMIT:
             break
@@ -94,14 +94,12 @@ def _render_results(results: list[dict]) -> str:
 
 
 def _clean_card(card: dict) -> dict:
-    """Card with ISO dates and no scrape-moment fields.
-
-    The URL is kept exactly as the source parser returned it, including
-    /latest and fragments. A date field is absent when the card's
-    about-item is missing or its value is empty (undated acts are a
-    normal site state).
+    """Card with ISO dates; the URL is kept exactly as the source parser
+    returned it, including /latest and fragments. A date field is absent
+    when the card's about-item is missing or its value is empty (undated
+    acts are a normal site state).
     """
-    out = {k: v for k, v in card.items() if k != "discovered"}
+    out = dict(card)
     for key in _DATE_KEYS:
         value = out.get(key)
         if value:

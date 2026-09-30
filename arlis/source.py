@@ -85,10 +85,6 @@ _CARD_LABELS = {
     "Ուժի մեջ մտնելու ամսաթիվ`": "effective_date",
     "Կարգավիճակ`": "status",
 }
-_SEARCH_DATE_FIELDS = frozenset({
-    "enactment_date", "effective_date", "interrupt_date",
-    "signature_date", "ratification_date",
-})
 
 _ACT_INFO_LABELS = {
     "Համար": "number",
@@ -147,20 +143,7 @@ _RELATION_SUBTAB_LABELS = [
 
 # --- page structure node bundle ---
 
-from dataclasses import dataclass, field
-
-
-@dataclass(frozen=True)
-class _ChangeData:
-    """Validated nodes for one change container consumed by parsers."""
-    couples_wrapper: object
-    couple_anchors: list
-
-
-@dataclass(frozen=True)
-class _RelationData:
-    """Validated anchors for one relation container."""
-    anchors: list
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
@@ -168,25 +151,31 @@ class _PageStructure:
     """Validated BeautifulSoup nodes returned by structure validation.
 
     Parsers receive these nodes and must not rediscover broader nodes.
+    `change_anchors` holds one list of couple-anchor lists per change
+    container; `relation_anchors` holds one anchor list per relation
+    container.
     """
     tab_containers: list
-    main_anchor: object
-    change_data: list
-    relation_data: list
+    change_anchors: list
+    relation_anchors: list
     relation_labels: list
 
 
 # --- discovery helpers ---
 
 
-def _build_params(filters: dict | None) -> str:
-    params: dict = {"simple_text": ""}
-    if filters:
-        params.update(filters)
+def _build_params(filters: dict) -> str:
+    """Encode the search request params used by search_acts.
+
+    `enactment_date` is the only dict field and is JSON-stringified;
+    `simple_text`, `status` and `include_old_versions` pass through.
+    """
+    params: dict = {"simple_text": filters.get("simple_text", "")}
+    if "enactment_date" in filters:
+        params["enactment_date"] = json.dumps(filters["enactment_date"])
+    if "status" in filters:
+        params["status"] = filters["status"]
     params["include_old_versions"] = "true"
-    for field in _SEARCH_DATE_FIELDS:
-        if field in params and isinstance(params[field], dict):
-            params[field] = json.dumps(params[field])
     return quote(json.dumps(params))
 
 
@@ -225,7 +214,6 @@ def _parse_card(card) -> dict:
         "id": act_id,
         "url": normalized,
         "title": title,
-        "discovered": datetime.now().strftime("%Y-%m-%d %H:%M"),
     }
 
     for item in card.find_all("div", class_="act-card__about-item"):
@@ -254,10 +242,8 @@ def _fetch_page(
     params: str,
     page: int,
     request_timeout: float,
-    order: str | None,
 ) -> tuple[list[dict], int | None]:
-    order_by = "" if order is None else f"enactment_date {order}"
-    url = f"{BASE_URL}/hy/search/page/{page}?{params}&order_by={order_by}"
+    url = f"{BASE_URL}/hy/search/page/{page}?{params}&order_by=enactment_date DESC"
     response = session.get(url, headers=_SEARCH_HEADERS, timeout=request_timeout)
     response.raise_for_status()
     data = response.json()
@@ -294,62 +280,41 @@ def _parse_validity(container) -> dict:
 
 
 def _parse_changes(structure: _PageStructure) -> dict:
-    """Parse changes using exact validated nodes from structure bundle.
+    """Parse changes from the validated couple anchors in the bundle.
 
-    Consumes only pre-validated nodes; does not rediscover any nodes.
-    Uses couple_anchors from the validated structure bundle.
+    Each couple contributes its required first-act anchor and, when a
+    second anchor exists, its incorporation anchor.
     """
-    result: dict = {}
-
-    # Main act from validated anchor
-    result["main_act"] = _normalize_act_link(structure.main_anchor["href"])
-
-    # Container 0: change history — consume validated change_data[0]
-    cd = structure.change_data[0]
     history: list[dict] = []
-    for couple_anchors in cd.couple_anchors:
-        entry: dict = {}
-        if len(couple_anchors) >= 1:
-            entry["changing_act"] = _normalize_act_link(couple_anchors[0]["href"])
+    for couple_anchors in structure.change_anchors[0]:
+        entry: dict = {"changing_act": _normalize_act_link(couple_anchors[0]["href"])}
         if len(couple_anchors) >= 2:
             entry["incorporation"] = _normalize_act_link(couple_anchors[1]["href"])
         history.append(entry)
-    result["change_history"] = history
 
-    # Container 1: changed acts — consume validated change_data[1]
-    cd = structure.change_data[1]
     modified: list[dict] = []
-    for couple_anchors in cd.couple_anchors:
-        entry: dict = {}
-        if len(couple_anchors) >= 1:
-            entry["changed_act"] = _normalize_act_link(couple_anchors[0]["href"])
+    for couple_anchors in structure.change_anchors[1]:
+        entry = {"changed_act": _normalize_act_link(couple_anchors[0]["href"])}
         if len(couple_anchors) >= 2:
             entry["incorporation"] = _normalize_act_link(couple_anchors[1]["href"])
         modified.append(entry)
-    result["changed_acts"] = modified
 
-    return result
+    return {"change_history": history, "changed_acts": modified}
 
 
 def _parse_connections(structure: _PageStructure) -> dict:
-    """Parse connections using exact validated nodes from structure bundle.
+    """Parse connections from the validated anchors in the bundle.
 
-    Consumes only pre-validated nodes; does not rediscover any nodes.
-    Uses relation_labels and relation_data from the validated structure bundle.
+    Consumes only pre-validated anchors; does not rediscover any nodes.
     """
-    # Labels from validated structure bundle (already extracted during validation)
     labels = structure.relation_labels
 
     result: dict = {}
-    for label, rd in zip(labels, structure.relation_data):
+    for label, anchors in zip(labels, structure.relation_anchors):
         key = _RELATIONS_LABELS.get(label)
         if not key:
             continue
-        urls: list[str] = []
-        for anchor in rd.anchors:
-            url = _normalize_act_link(anchor["href"])
-            urls.append(url)
-        result[key] = urls
+        result[key] = [_normalize_act_link(anchor["href"]) for anchor in anchors]
     return result
 
 
@@ -446,8 +411,12 @@ def _validate_page_identity(soup, act_id: int | None) -> int:
     return next(iter(found_ids))
 
 
-def _validate_change_couples_exact(couples_wrapper, role: str) -> None:
+def _validate_change_couples_exact(couples_wrapper, role: str) -> list[list]:
     """Validate change history/changed acts couples using exact validated node.
+
+    Returns one anchor list per couple, in document order: the required
+    first item's anchor plus the second item's anchor when the second
+    item has one (the "---------" marker shape contributes no anchor).
 
     Receives the exact direct couples wrapper node identified during
     structure validation — never re-selects or re-discovers nodes.
@@ -467,12 +436,10 @@ def _validate_change_couples_exact(couples_wrapper, role: str) -> None:
     Any unexpected direct element child in a couples wrapper is terminal.
     Uses direct-child selectors for couples and items.
     """
-    if couples_wrapper is None:
-        return  # heading validation already failed
-
     # Every direct element child must be .act-changes-history__couple
     direct_children = couples_wrapper.find_all(recursive=False)
     couples = []
+    anchors: list[list] = []
     for child in direct_children:
         if child.name == "div" and "act-changes-history__couple" in child.get("class", []):
             couples.append(child)
@@ -534,6 +501,7 @@ def _validate_change_couples_exact(couples_wrapper, role: str) -> None:
                 f"malformed {role} couple {i}: "
                 f"first item has href-less anchor"
             )
+        couple_anchors: list = [first_links[0]]
 
         # Second item (optional). Two allowed shapes:
         #   1. exactly one a[href] -> incorporation;
@@ -568,6 +536,7 @@ def _validate_change_couples_exact(couples_wrapper, role: str) -> None:
                         f"malformed {role} couple {i}: "
                         f"second item cannot mix an anchor and a marker span"
                     )
+                couple_anchors.append(second_links[0])
             else:
                 # Marker shape (or malformed): no anchors at all, and the
                 # only direct element child must be the marker span.
@@ -595,9 +564,15 @@ def _validate_change_couples_exact(couples_wrapper, role: str) -> None:
                         f"with no anchor, got {normalized!r}"
                     )
 
+        anchors.append(couple_anchors)
 
-def _validate_relation_items_exact(container, index: int) -> None:
+    return anchors
+
+
+def _validate_relation_items_exact(container, index: int) -> list:
     """Validate relation items using exact validated container node.
+
+    Returns one anchor per wrap, in document order.
 
     Each direct element child must be .act-conection__wrap.
     Each wrap contains exactly one direct .act-conection__item.
@@ -606,6 +581,7 @@ def _validate_relation_items_exact(container, index: int) -> None:
     """
     # Every direct element child must be .act-conection__wrap
     direct_children = container.find_all(recursive=False)
+    anchors: list = []
     for i, child in enumerate(direct_children):
         if child.name != "div" or "act-conection__wrap" not in child.get("class", []):
             raise ValueError(
@@ -642,6 +618,9 @@ def _validate_relation_items_exact(container, index: int) -> None:
                 f"malformed relation item {index}.{i}: "
                 f"has href-less anchor"
             )
+        anchors.append(links[0])
+
+    return anchors
 
 
 def _validate_tab_structure(soup) -> _PageStructure:
@@ -820,8 +799,9 @@ def _validate_tab_structure(soup) -> _PageStructure:
         )
 
     # Each direct change container: exactly one direct .act-changes-history
-    # Also collect the couples wrapper and per-couple anchors for _ChangeData
-    change_data_list: list[_ChangeData] = []
+    # Both headings are validated first; each couples wrapper is collected
+    # for validation after the loop.
+    couples_wrappers_list: list = []
     for i, cn in enumerate(change_nested):
         histories = cn.find_all(
             class_="act-changes-history", recursive=False
@@ -879,54 +859,22 @@ def _validate_tab_structure(soup) -> _PageStructure:
                 f"found {len(couples_wrappers)}"
             )
 
-        # Collect the couples wrapper and per-couple anchors from the exact
-        # wrapper; every couples-wrapper shape rule (direct couples only,
-        # item counts, anchor cardinality) is enforced by
-        # _validate_change_couples_exact below.
-        cw = couples_wrappers[0]
-        couple_anchors_list = []
-        for child in cw.find_all(
-            class_="act-changes-history__couple", recursive=False
-        ):
-            couple_anchors_for_this = []
-            for ci in child.find_all(
-                class_="act-changes-history__item", recursive=False
-            ):
-                a = ci.select_one("a[href]")
-                if a:
-                    couple_anchors_for_this.append(a)
-            couple_anchors_list.append(couple_anchors_for_this)
+        # Collect the couples wrapper; every couples-wrapper shape rule
+        # (direct couples only, item counts, anchor cardinality) is enforced
+        # by _validate_change_couples_exact below, which returns the
+        # validated per-couple anchors.
+        couples_wrappers_list.append(couples_wrappers[0])
 
-        change_data_list.append(_ChangeData(
-            couples_wrapper=cw,
-            couple_anchors=couple_anchors_list,
-        ))
-
-    # Validate couple items (counts, anchors) using exact validated containers
-    _validate_change_couples_exact(
-        change_data_list[0].couples_wrapper, role="change_history"
-    )
-    _validate_change_couples_exact(
-        change_data_list[1].couples_wrapper, role="changed_acts"
-    )
-
-    # Exactly one scoped main_act anchor inside .act-changes
-    # Must be DIRECT child of .act-changes (not nested)
-    direct_main_anchors = changes_block.find_all(
-        "a", class_="act-changes-primary", href=True, recursive=False
-    )
-    if len(direct_main_anchors) != 1:
-        raise ValueError(
-            f"expected exactly 1 direct a.act-changes-primary[href] "
-            f"child of .act-changes, found {len(direct_main_anchors)}"
-        )
-    # Globally only one .act-changes-primary anywhere
-    all_main = soup.select("a.act-changes-primary")
-    if len(all_main) != 1:
-        raise ValueError(
-            f"globally expected exactly 1 a.act-changes-primary, "
-            f"found {len(all_main)}"
-        )
+    # Validate couple items (counts, anchors) using exact validated
+    # containers, after both change-heading validations
+    change_anchors = [
+        _validate_change_couples_exact(
+            couples_wrappers_list[0], role="change_history"
+        ),
+        _validate_change_couples_exact(
+            couples_wrappers_list[1], role="changed_acts"
+        ),
+    ]
 
     # --- Relations block: scoped to .act-conection ---
     relation_block = soup.select_one(".act-conection")
@@ -989,23 +937,13 @@ def _validate_tab_structure(soup) -> _PageStructure:
             f"expected 4 relation containers, found {len(relation_containers)}"
         )
 
-    # Collect per-container anchors for _RelationData; every wrap/item/anchor
-    # shape rule is enforced by _validate_relation_items_exact below.
-    relation_data_list: list[_RelationData] = []
-    for rc in relation_containers:
-        anchors = []
-        for wrap in rc.find_all(class_="act-conection__wrap", recursive=False):
-            for item in wrap.find_all(
-                class_="act-conection__item", recursive=False
-            ):
-                a = item.select_one("a[href]")
-                if a:
-                    anchors.append(a)
-        relation_data_list.append(_RelationData(anchors=anchors))
-
-    # Validate relation items (wrap counts, anchor cardinality) using exact containers
-    for i, rc in enumerate(relation_containers):
+    # Validate relation items (wrap counts, anchor cardinality) using exact
+    # containers; each container returns its validated anchors. This runs
+    # before the global exclusivity checks.
+    relation_anchors = [
         _validate_relation_items_exact(rc, index=i)
+        for i, rc in enumerate(relation_containers)
+    ]
 
     # --- Global exclusivity checks ---
     # Every .act-nested-tabs on page must be exactly one of the two validated groups
@@ -1035,167 +973,10 @@ def _validate_tab_structure(soup) -> _PageStructure:
 
     return _PageStructure(
         tab_containers=tab_containers,
-        main_anchor=direct_main_anchors[0],
-        change_data=change_data_list,
-        relation_data=relation_data_list,
+        change_anchors=change_anchors,
+        relation_anchors=relation_anchors,
         relation_labels=relation_labels,
     )
-
-
-def _validate_changed_acts(changes: dict) -> None:
-    """Validate changed_acts entries in the parsed changes dict.
-
-    Every entry must contain ``changed_act`` and optional ``incorporation``.
-    Both URLs must be valid ARLIS act URLs (HTTPS, arlis.am host, proper path).
-    No extra keys are allowed.
-    """
-    if "changed_acts" not in changes:
-        return
-
-    changed_acts = changes["changed_acts"]
-    if not isinstance(changed_acts, list):
-        raise ValueError("changed_acts must be a list")
-
-    for i, entry in enumerate(changed_acts):
-        if not isinstance(entry, dict):
-            raise ValueError(f"changed_acts[{i}] must be a dict")
-        if "changed_act" not in entry:
-            raise ValueError(
-                f"changed_acts[{i}] missing required 'changed_act'"
-            )
-
-        changed_act_url = entry["changed_act"]
-        if not isinstance(changed_act_url, str):
-            raise ValueError(
-                f"changed_acts[{i}].changed_act must be a string"
-            )
-        if not _ARLIS_ACT_URL_RE.match(changed_act_url):
-            raise ValueError(
-                f"changed_acts[{i}].changed_act is not a valid ARLIS act "
-                f"URL: {changed_act_url!r}"
-            )
-
-        if "incorporation" in entry:
-            incorp_url = entry["incorporation"]
-            if not isinstance(incorp_url, str):
-                raise ValueError(
-                    f"changed_acts[{i}].incorporation must be a string"
-                )
-            if not _ARLIS_ACT_URL_RE.match(incorp_url):
-                raise ValueError(
-                    f"changed_acts[{i}].incorporation is not a valid ARLIS "
-                    f"act URL: {incorp_url!r}"
-                )
-
-        allowed_keys = frozenset({"changed_act", "incorporation"})
-        extra = set(entry.keys()) - allowed_keys
-        if extra:
-            raise ValueError(
-                f"changed_acts[{i}] has unexpected keys: {sorted(extra)}"
-            )
-
-
-def _validate_change_history(changes: dict) -> None:
-    """Validate change_history entries in the parsed changes dict.
-
-    Every entry must contain ``changing_act`` and optional ``incorporation``.
-    Both URLs must be valid ARLIS act URLs. No extra keys are allowed.
-    """
-    if "change_history" not in changes:
-        return
-
-    change_history = changes["change_history"]
-    if not isinstance(change_history, list):
-        raise ValueError("change_history must be a list")
-
-    for i, entry in enumerate(change_history):
-        if not isinstance(entry, dict):
-            raise ValueError(f"change_history[{i}] must be a dict")
-        if "changing_act" not in entry:
-            raise ValueError(
-                f"change_history[{i}] missing required 'changing_act'"
-            )
-
-        changing_act_url = entry["changing_act"]
-        if not isinstance(changing_act_url, str):
-            raise ValueError(
-                f"change_history[{i}].changing_act must be a string"
-            )
-        if not _ARLIS_ACT_URL_RE.match(changing_act_url):
-            raise ValueError(
-                f"change_history[{i}].changing_act is not a valid ARLIS act "
-                f"URL: {changing_act_url!r}"
-            )
-
-        if "incorporation" in entry:
-            incorp_url = entry["incorporation"]
-            if not isinstance(incorp_url, str):
-                raise ValueError(
-                    f"change_history[{i}].incorporation must be a string"
-                )
-            if not _ARLIS_ACT_URL_RE.match(incorp_url):
-                raise ValueError(
-                    f"change_history[{i}].incorporation is not a valid ARLIS "
-                    f"act URL: {incorp_url!r}"
-                )
-
-        allowed_keys = frozenset({"changing_act", "incorporation"})
-        extra = set(entry.keys()) - allowed_keys
-        if extra:
-            raise ValueError(
-                f"change_history[{i}] has unexpected keys: {sorted(extra)}"
-            )
-
-
-def _validate_main_act(changes: dict) -> None:
-    """Validate the main_act URL in the parsed changes dict."""
-    if "main_act" not in changes:
-        raise ValueError("missing required 'main_act'")
-    main_act_url = changes["main_act"]
-    if not isinstance(main_act_url, str):
-        raise ValueError("main_act must be a string")
-    if not _ARLIS_ACT_URL_RE.match(main_act_url):
-        raise ValueError(
-            f"main_act is not a valid ARLIS act URL: {main_act_url!r}"
-        )
-
-
-def _validate_relation_urls(relations: dict) -> None:
-    """Validate that all relation URLs are valid ARLIS act URLs.
-
-    Requires HTTPS, arlis.am host, proper locale/acts path, positive ID.
-    Rejects external hosts, credentials, ports, query strings, extra suffixes.
-    Requires exactly four expected relation keys.
-    """
-    expected_keys = frozenset({
-        "general_relations", "judicial_precedents",
-        "official_clarifications", "anti_constitutional",
-    })
-    actual_keys = set(relations.keys())
-    if actual_keys != expected_keys:
-        missing = expected_keys - actual_keys
-        extra = actual_keys - expected_keys
-        parts = []
-        if missing:
-            parts.append(f"missing {sorted(missing)}")
-        if extra:
-            parts.append(f"unexpected {sorted(extra)}")
-        raise ValueError(
-            f"relations keys mismatch: {', '.join(parts)}"
-        )
-    for key, urls in relations.items():
-        if not isinstance(urls, list):
-            raise ValueError(f"relations.{key} must be a list")
-        for j, url in enumerate(urls):
-            if not isinstance(url, str):
-                raise ValueError(
-                    f"relations.{key}[{j}] must be a string"
-                )
-            if not _ARLIS_ACT_URL_RE.match(url):
-                raise ValueError(
-                    f"relations.{key}[{j}] is not a valid ARLIS act URL: "
-                    f"{url!r}"
-                )
 
 
 def _parse_act(html: str, act_id: int | None, url: str) -> dict:
@@ -1214,20 +995,12 @@ def _parse_act(html: str, act_id: int | None, url: str) -> dict:
         "url": url,
         "title": title,
         "source": "arlis",
-        "extracted": datetime.now().strftime("%Y-%m-%d %H:%M"),
     }
 
-    # Use exact validated nodes from structure bundle
-    if len(structure.tab_containers) >= 1:
-        result.update(_parse_validity(structure.tab_containers[0]))
-    if len(structure.tab_containers) >= 2:
-        result["changes"] = _parse_changes(structure)
-        _validate_main_act(result["changes"])
-        _validate_change_history(result["changes"])
-        _validate_changed_acts(result["changes"])
-    if len(structure.tab_containers) >= 3:
-        result["relations"] = _parse_connections(structure)
-        _validate_relation_urls(result["relations"])
+    # Parse all three validated tabs from the structure bundle
+    result.update(_parse_validity(structure.tab_containers[0]))
+    result["changes"] = _parse_changes(structure)
+    result["relations"] = _parse_connections(structure)
 
     main_block = soup.select_one(".act-block_main .act-block__section")
     result["full_html"] = str(main_block) if main_block else ""

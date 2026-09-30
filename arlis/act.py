@@ -117,17 +117,15 @@ def _fetch_record(url: str) -> dict:
 
 
 def _serialize(record: dict) -> dict:
-    """Plain metadata: drop id/scrape timestamps/full HTML/main act, ISO dates.
+    """Plain metadata: drop id/full HTML, ISO dates.
 
     Change and relation URLs are kept exactly as the source parser
     produced them (path, /latest suffix and fragment intact).
     """
-    out = {k: v for k, v in record.items() if k not in ("id", "full_html", "extracted")}
+    out = {k: v for k, v in record.items() if k not in ("id", "full_html")}
     for key in _DATE_FIELDS:
         if out.get(key):
             out[key] = _to_iso_date(out[key])
-    if "changes" in out:
-        out["changes"] = {k: v for k, v in out["changes"].items() if k != "main_act"}
     return out
 
 
