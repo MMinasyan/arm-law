@@ -325,7 +325,7 @@ def process_lists(soup, element):
                 count += 1
         return count + 1
     
-    def get_previous_li_at_same_level(stack, level, expected_number):
+    def get_previous_li_at_same_level(stack, level):
         """Find the previous list item at the same level and list."""
         for i in range(len(stack) - 1, -1, -1):
             if stack[i][0] == level:
@@ -355,6 +355,39 @@ def process_lists(soup, element):
                 return stack[-1][4]
             else:
                 return 1
+
+    def absorb_siblings(start, stop) -> int | None:
+        """Move siblings from start up to stop into the current list item.
+
+        Reads the live stack: targets its current li and wraps leading text
+        iff start is truthy and differs from stop. Walks until stop/end using
+        the existing index mapping, live level and expected number. A section
+        boundary clears the stack and returns None without moving the boundary
+        node or undoing prior moves. Otherwise the next sibling is saved before
+        every append, every moved sibling is counted, the top tuple is updated
+        on normal completion and the count (including zero) is returned.
+        """
+        li = stack[-1][3]
+        if start and start != stop:
+            wrap_leading_text(soup, li)
+        current_sib = start
+        absorbed = 0
+        while current_sib and current_sib != stop:
+            # Check for section boundary (headers, hr, article paragraphs)
+            if is_section_boundary(current_sib, elem_to_idx.get(id(current_sib)), stack[-1][0], stack[-1][2]):
+                # Clear stack and stop; the boundary node stays in place
+                while stack:
+                    stack.pop()
+                return None
+            next_sib = current_sib.next_sibling
+            li.append(current_sib)
+            absorbed += 1
+            current_sib = next_sib
+        # Only update stack if we didn't hit a section boundary
+        if stack:
+            stack[-1] = (stack[-1][0], stack[-1][1], stack[-1][2], li, stack[-1][4] + absorbed)
+        return absorbed
+
     
     # Enhanced stack to track element counts: (level, list_tag, expected_number, current_li, absorbed_count)
     stack = []
@@ -610,52 +643,11 @@ def process_lists(soup, element):
                     )
                     
                     # Apply absorption rules
-                    if continues_current:
-                        # Between consecutive items of same list - ALWAYS absorb unless hard section boundary
-                        li = stack[-1][3]
-                        if start_point and start_point != next_p:
-                            wrap_leading_text(soup, li)
-                        current_sib = start_point
-                        absorbed = 0
-                        while current_sib and current_sib != next_p:
-                            # Check for section boundary (headers, hr, Հdelays pattern)
-                            if is_section_boundary(current_sib, elem_to_idx.get(id(current_sib)), stack[-1][0], stack[-1][2]):
-                                # Clear stack and stop
-                                while stack:
-                                    stack.pop()
-                                break
-                            next_sib = current_sib.next_sibling
-                            li.append(current_sib)
-                            absorbed += 1
-                            current_sib = next_sib
-                        else:
-                            # Only update stack if we didn't hit section boundary
-                            if stack:
-                                stack[-1] = (stack[-1][0], stack[-1][1], stack[-1][2], li, stack[-1][4] + absorbed)
-                                i = j
-                    elif next_level > current_level:
-                        # Next is deeper level - absorb to current (preamble) unless hard section boundary
-                        li = stack[-1][3]
-                        if start_point and start_point != next_p:
-                            wrap_leading_text(soup, li)
-                        current_sib = start_point
-                        absorbed = 0
-                        while current_sib and current_sib != next_p:
-                            # Check for section boundary (headers, hr, Հdelays pattern)
-                            if is_section_boundary(current_sib, elem_to_idx.get(id(current_sib)), stack[-1][0], stack[-1][2]):
-                                # Clear stack and stop
-                                while stack:
-                                    stack.pop()
-                                break
-                            next_sib = current_sib.next_sibling
-                            li.append(current_sib)
-                            absorbed += 1
-                            current_sib = next_sib
-                        else:
-                            # Only update stack if we didn't hit section boundary
-                            if stack:
-                                stack[-1] = (stack[-1][0], stack[-1][1], stack[-1][2], li, stack[-1][4] + absorbed)
-                                i = j
+                    if continues_current or next_level > current_level:
+                        # Same-level continuation or deeper child - absorb into the
+                        # current item unless a hard section boundary is hit
+                        if absorb_siblings(start_point, next_p) is not None:
+                            i = j
                     else:
                         # next_level <= current_level: Apply COMPARATIVE LENGTH RULE
                         if len(stack) > 1:
@@ -663,7 +655,7 @@ def process_lists(soup, element):
                             n = elem_count + 1  # +1 for the next item line itself
                             
                             # Find previous item at same level to get n_prev
-                            prev_li = get_previous_li_at_same_level(stack, current_level, current_expected)
+                            prev_li = get_previous_li_at_same_level(stack, current_level)
                             if prev_li:
                                 n_prev = count_li_content(prev_li)
                             else:
@@ -672,52 +664,14 @@ def process_lists(soup, element):
                             
                             if n <= _TRAILING_MULTIPLIER * n_prev:
                                 # Absorb to current item
-                                li = stack[-1][3]
-                                if start_point and start_point != next_p:
-                                    wrap_leading_text(soup, li)
-                                current_sib = start_point
-                                absorbed = 0
-                                while current_sib and current_sib != next_p:
-                                    # Check for section boundary
-                                    if is_section_boundary(current_sib, elem_to_idx.get(id(current_sib)), stack[-1][0], stack[-1][2]):
-                                        # Clear stack and stop
-                                        while stack:
-                                            stack.pop()
-                                        break
-                                    next_sib = current_sib.next_sibling
-                                    li.append(current_sib)
-                                    absorbed += 1
-                                    current_sib = next_sib
-                                else:
-                                    # Only update if we didn't hit section boundary
-                                    if stack:
-                                        stack[-1] = (stack[-1][0], stack[-1][1], stack[-1][2], li, stack[-1][4] + absorbed)
-                                        i = j
+                                if absorb_siblings(start_point, next_p) is not None:
+                                    i = j
                             else:
                                 # Don't absorb to current, pop level and absorb to parent
                                 stack.pop()
                                 if stack:
-                                    parent_li = stack[-1][3]
-                                    if start_point and start_point != next_p:
-                                        wrap_leading_text(soup, parent_li)
-                                    current_sib = start_point
-                                    absorbed = 0
-                                    while current_sib and current_sib != next_p:
-                                        # Check for section boundary
-                                        if is_section_boundary(current_sib, elem_to_idx.get(id(current_sib)), stack[-1][0], stack[-1][2]):
-                                            # Clear stack and stop
-                                            while stack:
-                                                stack.pop()
-                                            break
-                                        next_sib = current_sib.next_sibling
-                                        parent_li.append(current_sib)
-                                        absorbed += 1
-                                        current_sib = next_sib
-                                    else:
-                                        # Only update if we didn't hit section boundary
-                                        if stack:
-                                            stack[-1] = (stack[-1][0], stack[-1][1], stack[-1][2], parent_li, stack[-1][4] + absorbed)
-                                            i = j
+                                    if absorb_siblings(start_point, next_p) is not None:
+                                        i = j
                         else:
                             # Top level - apply comparative length rule
                             n = elem_count + 1
@@ -736,27 +690,8 @@ def process_lists(soup, element):
                                 n_prev = stack[-1][4]
                             
                             if n <= _TRAILING_MULTIPLIER * n_prev:
-                                li = stack[-1][3]
-                                if start_point and start_point != next_p:
-                                    wrap_leading_text(soup, li)
-                                current_sib = start_point
-                                absorbed = 0
-                                while current_sib and current_sib != next_p:
-                                    # Check for section boundary
-                                    if is_section_boundary(current_sib, elem_to_idx.get(id(current_sib)), stack[-1][0], stack[-1][2]):
-                                        # Clear stack and stop
-                                        while stack:
-                                            stack.pop()
-                                        break
-                                    next_sib = current_sib.next_sibling
-                                    li.append(current_sib)
-                                    absorbed += 1
-                                    current_sib = next_sib
-                                else:
-                                    # Only update if we didn't hit section boundary
-                                    if stack:
-                                        stack[-1] = (stack[-1][0], stack[-1][1], stack[-1][2], li, stack[-1][4] + absorbed)
-                                        i = j
+                                if absorb_siblings(start_point, next_p) is not None:
+                                    i = j
                             else:
                                 # Don't absorb, clear stack
                                 while stack:
@@ -779,27 +714,10 @@ def process_lists(soup, element):
 
                         if n <= _TRAILING_MULTIPLIER * n_prev:
                             # Absorb trailing elements
-                            li = stack[-1][3]
-                            if start_point:
-                                wrap_leading_text(soup, li)
-                            current_sib = start_point
-                            absorbed = 0
-                            while current_sib:
-                                if is_section_boundary(current_sib, elem_to_idx.get(id(current_sib)), stack[-1][0], stack[-1][2]):
-                                    # Clear stack and stop
-                                    while stack:
-                                        stack.pop()
-                                    break
-                                next_sib = current_sib.next_sibling
-                                li.append(current_sib)
-                                absorbed += 1
-                                current_sib = next_sib
-                            else:
-                                # Only update if we didn't hit section boundary
-                                if stack:
-                                    stack[-1] = (stack[-1][0], stack[-1][1], stack[-1][2], li, stack[-1][4] + absorbed)
-                                    # Skip the absorbed elements
-                                    i = i + absorbed
+                            absorbed = absorb_siblings(start_point, None)
+                            if absorbed is not None:
+                                # Skip the absorbed elements
+                                i = i + absorbed
                         else:
                             # Threshold exceeded - don't absorb, close all lists
                             while stack:
