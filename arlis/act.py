@@ -107,13 +107,19 @@ def _read_act(url: str) -> tuple[dict, str]:
 
 
 def _fetch_record(url: str) -> dict:
-    """Fetch the supplied URL unchanged; /latest only defers the identity."""
+    """Fetch the supplied URL unchanged; pass its requested act ID.
+
+    The requested ID is the URL's positive numeric path segment for
+    every accepted form — the /latest suffix changes nothing, there is
+    no suffix dispatch and the ID is never None. The act-family
+    identity check itself lives in _parse_act.
+    """
     match = _ACT_ID_RE.search(url)
     assert match is not None  # the ARLIS grammar guarantees the segment
-    act_id = None if url.split("#", 1)[0].endswith("/latest") else int(match.group(1))
+    requested_id = int(match.group(1))
     response = new_session().get(url, timeout=REQUEST_TIMEOUT)
     response.raise_for_status()
-    return _parse_act(response.text, act_id, url)
+    return _parse_act(response.text, requested_id, url)
 
 
 def _serialize(record: dict) -> dict:

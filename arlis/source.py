@@ -78,6 +78,13 @@ def _normalize_act_link(href: str | None) -> str | None:
     raise ValueError(f"malformed act link: {href!r}")
 
 
+def _act_link_id(url: str) -> int:
+    """The positive numeric act segment of a normalized act link."""
+    match = re.search(r"/acts/([1-9][0-9]*)", url)
+    assert match is not None  # _normalize_act_link's grammar guarantees it
+    return int(match.group(1))
+
+
 _RESULT_COUNT_RE = re.compile(r'result_count.*?\$\{(\d+)\}')
 _CARD_LABELS = {
     "Ակտի համար`": "number",
@@ -153,12 +160,14 @@ class _PageStructure:
     Parsers receive these nodes and must not rediscover broader nodes.
     `change_anchors` holds one list of couple-anchor lists per change
     container; `relation_anchors` holds one anchor list per relation
-    container.
+    container; `primary_id` is the act ID declared by the page's unique
+    primary act link.
     """
     tab_containers: list
     change_anchors: list
     relation_anchors: list
     relation_labels: list
+    primary_id: int
 
 
 # --- discovery helpers ---
@@ -318,7 +327,7 @@ def _parse_connections(structure: _PageStructure) -> dict:
     return result
 
 
-def _validate_page_identity(soup, act_id: int | None) -> int:
+def _validate_page_identity(soup) -> int:
     """Validate page-owned identity evidence and return the served act ID.
 
     Requires exactly one #share-act, one #download-act, one #print-act modal.
@@ -328,9 +337,9 @@ def _validate_page_identity(soup, act_id: int | None) -> int:
     planned location.href expression with SAME opening/closing quote.
     Print group is every a[href] inside #print-act; each must full-match
     exact relative print grammar. Each group non-empty. All IDs agree.
-    A concrete URL additionally requires the requested act_id among them;
-    act_id None (a /latest version selector) skips only that requested-number
-    comparison, and the consistent served identity is returned either way.
+    The requested-versus-served family check runs in _parse_act against
+    the page's validated act-family evidence; there is no requested-ID
+    comparison here and no URL-form exemption.
     """
     # Require exactly one of each modal
     share_modals = soup.select("#share-act")
@@ -399,11 +408,6 @@ def _validate_page_identity(soup, act_id: int | None) -> int:
             )
         found_ids.add(int(match.group(1)))
 
-    if act_id is not None and act_id not in found_ids:
-        raise ValueError(
-            f"page identity mismatch: requested {act_id}, "
-            f"page shows {sorted(found_ids)}"
-        )
     if len(found_ids) > 1:
         raise ValueError(
             f"page identity conflict: multiple IDs found {sorted(found_ids)}"
@@ -876,6 +880,30 @@ def _validate_tab_structure(soup) -> _PageStructure:
         ),
     ]
 
+    # Primary act proof: exactly one direct a.act-changes-primary[href]
+    # child of the validated .act-changes block, and none anywhere else
+    # (a second anchor elsewhere would make the declared primary ambiguous).
+    direct_primary = changes_block.find_all(
+        "a", class_="act-changes-primary", href=True, recursive=False
+    )
+    if len(direct_primary) != 1:
+        raise ValueError(
+            f"expected exactly 1 direct a.act-changes-primary[href] "
+            f"child of .act-changes, found {len(direct_primary)}"
+        )
+    all_primary = soup.select("a.act-changes-primary")
+    if len(all_primary) != 1:
+        raise ValueError(
+            f"globally expected exactly 1 a.act-changes-primary, "
+            f"found {len(all_primary)}"
+        )
+    try:
+        primary_href = _normalize_act_link(direct_primary[0]["href"])
+    except ValueError as e:
+        raise ValueError(f"primary act link: {e}") from e
+    assert primary_href is not None  # the href attribute is present
+    primary_id = _act_link_id(primary_href)
+
     # --- Relations block: scoped to .act-conection ---
     relation_block = soup.select_one(".act-conection")
 
@@ -976,15 +1004,24 @@ def _validate_tab_structure(soup) -> _PageStructure:
         change_anchors=change_anchors,
         relation_anchors=relation_anchors,
         relation_labels=relation_labels,
+        primary_id=primary_id,
     )
 
 
-def _parse_act(html: str, act_id: int | None, url: str) -> dict:
+def _parse_act(html: str, act_id: int, url: str) -> dict:
+    """Parse one validated act page; `act_id` is the supplied URL's ID.
+
+    The record is returned only under one uniform identity rule for
+    every accepted URL form: both the requested ID and the served ID
+    must belong to the act family the page declares — its primary act
+    plus the incorporations of its inbound change history. Membership
+    proves the same legal-act family, not a concrete URL's numeric
+    version.
+    """
     soup = BeautifulSoup(html, "lxml")
 
     # Validate page identity and structure before constructing record.
-    # The served identity (not the requested one) is the page's truth.
-    served_id = _validate_page_identity(soup, act_id)
+    served_id = _validate_page_identity(soup)
     structure = _validate_tab_structure(soup)
 
     title_div = soup.select_one(".act-info__title")
@@ -999,7 +1036,24 @@ def _parse_act(html: str, act_id: int | None, url: str) -> dict:
 
     # Parse all three validated tabs from the structure bundle
     result.update(_parse_validity(structure.tab_containers[0]))
-    result["changes"] = _parse_changes(structure)
+    changes = _parse_changes(structure)
+    result["changes"] = changes
+
+    # Act-family membership: primary act plus the second (incorporation)
+    # anchors of the inbound change-history couples only. Amending acts,
+    # outbound couples and relation links are not family evidence.
+    family = {structure.primary_id} | {
+        _act_link_id(entry["incorporation"])
+        for entry in changes["change_history"]
+        if entry.get("incorporation")
+    }
+    for role, identity in (("requested", act_id), ("served", served_id)):
+        if identity not in family:
+            raise ValueError(
+                f"page identity: {role} {identity} is not in the page's "
+                f"act family {sorted(family)}"
+            )
+
     result["relations"] = _parse_connections(structure)
 
     main_block = soup.select_one(".act-block_main .act-block__section")
