@@ -60,10 +60,12 @@ def get_act(url: str, output_dir: str | None = None) -> str:
     """Fetch one ARLIS act URL and save it as a local markdown file.
 
     Writes the act's plain-text metadata followed by its full text as
-    markdown to {output_dir or ./.arlis}/<document-number>.md and
-    returns the absolute saved path, the metadata line range and a
-    short line-numbered heading structure. search_acts returns the
-    URLs this accepts.
+    markdown to <output_dir>/<numeric URL segment>.md (default
+    directory .arlis under the server working directory), then returns
+    only the absolute saved path, the metadata line range and a short
+    line-numbered heading structure. The saved file must be read with
+    an available file-reading tool before analyzing its content.
+    search_acts returns the URLs this accepts.
     """
     if not _ARLIS_ACT_URL_RE.match(url):
         raise ValueError(f"not a valid arlis act URL: {url!r}")

@@ -38,10 +38,13 @@ def search_acts(
 ) -> str:
     """Find acts on arlis.am by free text and/or enactment-date range.
 
-    Returns plain text: `Search results (N):` followed by numbered
-    entries with each act's full title, URL and available metadata, or
-    exactly `No acts found.` when nothing matches. The returned URLs
-    feed get_act for reading and saving.
+    Latest versions only: at most 20 source entries, newest first by
+    enactment date. Returns plain text: `Search results (N):` followed
+    by numbered entries with each act's full title, URL and available
+    metadata, or exactly `No acts found.` when nothing matches. N is
+    the number of returned entries, not the number of all matches, and
+    duplicate acts can appear. The returned URLs feed get_act for
+    reading and saving.
     """
     simple_text = (
         search_string.replace("և", "ԵՎ")
