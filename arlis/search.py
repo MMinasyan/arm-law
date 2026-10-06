@@ -35,6 +35,7 @@ def search_acts(
     data_after: str | None = None,
     date_before: str | None = None,
     active: bool = True,
+    search_in_text: bool = False,
 ) -> str:
     """Find acts on arlis.am by free text and/or enactment-date range.
 
@@ -45,6 +46,14 @@ def search_acts(
     the number of returned entries, not the number of all matches, and
     duplicate acts can appear. The returned URLs feed get_act for
     reading and saving.
+
+    `search_in_text=False` (default) matches the query against act
+    TITLES only. `search_in_text=True` extends the same query to act
+    TITLES and the act BODY text as well (titles are still matched;
+    it is not a body-only mode). The flag only selects the request
+    mode: latest-only search, the 20-result bound, newest-first order,
+    the returned metadata and URLs, duplicates and the reply format
+    are unchanged either way.
     """
     simple_text = (
         search_string.replace("և", "ԵՎ")
@@ -65,6 +74,7 @@ def search_acts(
         }
     if active:
         filters["status"] = _ACTIVE_STATUSES
+    filters["text_filter"] = "2" if search_in_text else "1"
     params = _build_params(filters)
 
     session = new_session()

@@ -13,7 +13,11 @@ mcp = MCPServer(
         "system. search_acts finds acts (laws, decisions, orders) by free "
         "text and enactment-date range and returns the latest version only "
         "of up to 20 source entries, newest first by enactment date, with "
-        "each act's full title, URL and available metadata. get_act accepts "
+        "each act's full title, URL and available metadata. By default "
+        "search_acts matches titles only; its optional search_in_text "
+        "argument extends the same query to act titles and contents "
+        "(titles are still matched, it is not a contents-only mode). "
+        "get_act accepts "
         "any valid ARLIS act URL, passed unchanged, and saves the act's "
         "metadata and full text as markdown to "
         "<output_dir>/<numeric URL segment>.md, by default in the .arlis "
@@ -36,7 +40,9 @@ def search_acts(
             "Free-text ARLIS query; may be empty when the query is by "
             "enactment date and/or status only. The query text is "
             "normalized (և/եւ/Եւ become ԵՎ) and uppercased "
-            "before searching."
+            "before searching. With search_in_text=False (default) the "
+            "query matches act titles only; search_in_text=True matches "
+            "act titles and act contents."
         )),
     ],
     data_after: Annotated[
@@ -63,9 +69,23 @@ def search_acts(
             "filters still apply."
         )),
     ] = True,
+    search_in_text: Annotated[
+        bool,
+        Field(description=(
+            "False (default) matches the query against act TITLES only. "
+            "True extends the same query to act TITLES and act CONTENTS "
+            "(body text as well; titles are still matched, it is not a "
+            "contents-only mode). The choice has no effect when the "
+            "query is empty. Latest-only search, the 20-result bound, "
+            "newest-first order and the reply format are unchanged "
+            "either way."
+        )),
+    ] = False,
 ) -> str:
     try:
-        return arlis.search_acts(search_string, data_after, date_before, active)
+        return arlis.search_acts(
+            search_string, data_after, date_before, active, search_in_text
+        )
     except Exception as e:
         raise ToolError(str(e)) from e
 

@@ -177,15 +177,19 @@ def _build_params(filters: dict) -> str:
     """Encode the search request params used by search_acts.
 
     `enactment_date` is the only dict field and is JSON-stringified;
-    `simple_text` and `status` pass through. `include_old_versions` is
-    deliberately omitted for latest-only search: sending it (even as a
-    raw "false" string) re-enables old versions on the site.
+    `simple_text` and `status` pass through. `text_filter` is a fixed
+    whitelist entry, always sent as an explicit string: "1" (default,
+    titles only) or "2" (titles and body), never a bool and never
+    arbitrary caller filters. `include_old_versions` is deliberately
+    omitted for latest-only search: sending it (even as a raw "false"
+    string) re-enables old versions on the site.
     """
     params: dict = {"simple_text": filters.get("simple_text", "")}
     if "enactment_date" in filters:
         params["enactment_date"] = json.dumps(filters["enactment_date"])
     if "status" in filters:
         params["status"] = filters["status"]
+    params["text_filter"] = filters.get("text_filter", "1")
     return quote(json.dumps(params))
 
 
