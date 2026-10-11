@@ -96,7 +96,6 @@ _CARD_LABELS = {
 _ACT_INFO_LABELS = {
     "Համար": "number",
     "Տիպ": "type",
-    "Փաստաթղթի տեսակ": "act_type",
     "Կարգավիճակ": "status",
     "Սկզբնաղբյուր": "arlis_source",
     "Ընդունող մարմին": "enactment_organisation",
