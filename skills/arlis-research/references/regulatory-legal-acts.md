@@ -2,7 +2,7 @@
 
 Adopted on 21 March 2018
 
-Unofficial English translation aligned with the [current Armenian official incorporation](https://www.arlis.am/hy/acts/218697/latest), in effect from 26 December 2025, retrieved on 7 October 2026. The accompanying [Armenian file](regulatory-legal-acts-hy.md) preserves the retrieved Markdown verbatim. This English text is not an official translation issued under Article 22.
+Unofficial English translation aligned with the [current Armenian official incorporation](https://www.arlis.am/hy/acts/218697/latest), in effect from 26 December 2025, retrieved on 7 October 2026. The accompanying [Armenian file](regulatory-legal-acts-hy.md) preserves the retrieved legal text verbatim. This English text is not an official translation issued under Article 22.
 
 ## CHAPTER 1: GENERAL PROVISIONS
 
