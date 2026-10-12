@@ -1,5 +1,30 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
-  "name": "arlis",
-  "version": "1.0.0"
+  "name": "arm-law",
+  "version": "1.0.0",
+  "description": "A research skill for Armenian law, bundled with ARLIS search and document retrieval tools.",
+  "author": {
+    "name": "MMinasyan",
+    "url": "https://github.com/MMinasyan"
+  },
+  "homepage": "https://github.com/MMinasyan/arm-law",
+  "repository": "https://github.com/MMinasyan/arm-law",
+  "license": "MIT",
+  "keywords": [
+    "armenian-law",
+    "legal-research",
+    "arlis",
+    "legislation",
+    "case-law",
+    "statutory-interpretation"
+  ],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "ArmLaw",
+        "shortDescription": "Armenian law research with ARLIS sources",
+        "developerName": "MMinasyan"
+      }
+    }
+  }
 }
