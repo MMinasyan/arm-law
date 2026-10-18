@@ -32,6 +32,13 @@ def search_acts(
             "Use false to include all statuses."
         )),
     ] = True,
+    incorporations_only: Annotated[
+        bool,
+        Field(description=(
+            "True (default): search only incorporations with all amendments included. "
+            "Use false to also search amendment acts."
+        )),
+    ] = True,
     data_after: Annotated[
         str | None,
         Field(description=(
@@ -49,7 +56,8 @@ def search_acts(
 ) -> str:
     try:
         return arlis.search_acts(
-            search_string, data_after, date_before, active, search_in_text
+            search_string, data_after, date_before, active, search_in_text,
+            incorporations_only,
         )
     except Exception as e:
         raise ToolError(str(e)) from e

@@ -179,7 +179,8 @@ def _build_params(filters: dict) -> str:
     `simple_text` and `status` pass through. `text_filter` is a fixed
     whitelist entry, always sent as an explicit string: "1" (default,
     titles only) or "2" (titles and body), never a bool and never
-    arbitrary caller filters. `include_old_versions` is deliberately
+    arbitrary caller filters. `exclude_changing_acts` is sent as "true"
+    only when enabled. `include_old_versions` is deliberately
     omitted for latest-only search: sending it (even as a raw "false"
     string) re-enables old versions on the site.
     """
@@ -189,6 +190,8 @@ def _build_params(filters: dict) -> str:
     if "status" in filters:
         params["status"] = filters["status"]
     params["text_filter"] = filters.get("text_filter", "1")
+    if filters.get("exclude_changing_acts"):
+        params["exclude_changing_acts"] = "true"
     return quote(json.dumps(params))
 
 

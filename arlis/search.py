@@ -36,6 +36,7 @@ def search_acts(
     date_before: str | None = None,
     active: bool = True,
     search_in_text: bool = False,
+    incorporations_only: bool = True,
 ) -> str:
     """Search ARLIS for acts and return their titles, URLs and metadata.
     Latest versions only, newest first by enactment date. Use get_act to
@@ -54,7 +55,10 @@ def search_acts(
     if date_before is not None:
         _check_iso_date(date_before, "date_before")
 
-    filters: dict = {"simple_text": simple_text}
+    filters: dict = {
+        "simple_text": simple_text,
+        "exclude_changing_acts": incorporations_only,
+    }
     if data_after is not None or date_before is not None:
         filters["enactment_date"] = {
             "start": data_after or "",
