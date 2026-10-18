@@ -37,23 +37,11 @@ def search_acts(
     active: bool = True,
     search_in_text: bool = False,
 ) -> str:
-    """Find acts on arlis.am by free text and/or enactment-date range.
-
-    Latest versions only: at most 20 source entries, newest first by
-    enactment date. Returns plain text: `Search results (N):` followed
-    by numbered entries with each act's full title, URL and available
-    metadata, or exactly `No acts found.` when nothing matches. N is
-    the number of returned entries, not the number of all matches, and
-    duplicate acts can appear. The returned URLs feed get_act for
-    reading and saving.
-
-    `search_in_text=False` (default) matches the query against act
-    TITLES only. `search_in_text=True` extends the same query to act
-    TITLES and the act BODY text as well (titles are still matched;
-    it is not a body-only mode). The flag only selects the request
-    mode: latest-only search, the 20-result bound, newest-first order,
-    the returned metadata and URLs, duplicates and the reply format
-    are unchanged either way.
+    """Search ARLIS for acts and return their titles, URLs and metadata.
+    Latest versions only, newest first by enactment date. Use get_act to
+    retrieve the text.
+    Use only the search_string parameter; others default to what you will
+    need in 99% of cases. Don't use optional parameters without a reason.
     """
     simple_text = (
         search_string.replace("և", "ԵՎ")
