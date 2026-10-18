@@ -25,6 +25,10 @@ def search_acts(
             "Use true to also search act CONTENTS."
         )),
     ] = False,
+    limit: Annotated[
+        int,
+        Field(description="Maximum number of results to return (default: 5).", ge=1),
+    ] = 5,
     active: Annotated[
         bool,
         Field(description=(
@@ -57,7 +61,7 @@ def search_acts(
     try:
         return arlis.search_acts(
             search_string, data_after, date_before, active, search_in_text,
-            incorporations_only,
+            incorporations_only, limit,
         )
     except Exception as e:
         raise ToolError(str(e)) from e

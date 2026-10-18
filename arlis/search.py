@@ -8,7 +8,6 @@ from .source import _PAGE_SIZE, _build_params, _fetch_page, _to_iso_date
 
 _DATE_KEYS = ("enactment_date", "effective_date")
 
-_RESULT_LIMIT = 20
 _ACTIVE_STATUSES = "1,4,5,7,9,12"
 
 _METADATA_LABELS = (
@@ -37,6 +36,7 @@ def search_acts(
     active: bool = True,
     search_in_text: bool = False,
     incorporations_only: bool = True,
+    limit: int = 5,
 ) -> str:
     """Search ARLIS for acts and return their titles, URLs and metadata.
     Latest versions only, newest first by enactment date. Use get_act to
@@ -44,6 +44,8 @@ def search_acts(
     Use only the search_string parameter; others default to what you will
     need in 99% of cases. Don't use optional parameters without a reason.
     """
+    if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+        raise ValueError(f"limit must be a positive integer, got {limit!r}")
     simple_text = (
         search_string.replace("և", "ԵՎ")
         .replace("եւ", "ԵՎ")
@@ -75,12 +77,12 @@ def search_acts(
     while True:
         cards, total = _fetch_page(session, params, page, REQUEST_TIMEOUT)
         results.extend(_clean_card(card) for card in cards)
-        if len(results) >= _RESULT_LIMIT:
+        if len(results) >= limit:
             break
         if total is None or page * _PAGE_SIZE >= total:
             break
         page += 1
-    return _render_results(results[:_RESULT_LIMIT])
+    return _render_results(results[:limit])
 
 
 def _render_results(results: list[dict]) -> str:
