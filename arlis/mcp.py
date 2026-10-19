@@ -77,7 +77,8 @@ def get_act(
         str | None,
         Field(description=(
             "Destination directory where the act’s Markdown file will be saved. "
-            "Omit this parameter to use .arlis under the MCP server’s working directory."
+            "Omit this parameter to use .arlis under PLUGIN_DATA, or the MCP "
+            "server’s working directory if PLUGIN_DATA is unset or empty."
         )),
     ] = None,
 ) -> str:

@@ -104,8 +104,8 @@ the repository root.
 - Search returns the latest versions, newest first by enactment date. Use
   `limit` to set the maximum number of entries (default: 5); duplicates can appear.
 - `get_act` returns a file path; the assistant must read the file to use the
-  text. Files are saved to `.arlis/` in the plugin directory unless
-  `output_dir` is set.
+  text. Omitted `output_dir` saves to `.arlis` under `PLUGIN_DATA`, falling
+  back to the server working directory when `PLUGIN_DATA` is unset or empty.
 - A cloud-only assistant cannot read saved files through an MCP tunnel; local
   execution is required.
 - The server sends queries to ARLIS; tool results and text the assistant reads

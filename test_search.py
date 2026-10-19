@@ -56,7 +56,8 @@ def check():
             session.assert_not_called()
 
     async def check_schema():
-        tool = next(t for t in await mcp.list_tools() if t.name == "search_acts")
+        tools = await mcp.list_tools()
+        tool = next(t for t in tools if t.name == "search_acts")
         assert list(tool.input_schema["properties"]) == [
             "search_string", "search_in_text", "limit", "active",
             "incorporations_only", "data_after", "date_before",
@@ -70,6 +71,32 @@ def check():
         assert prop["type"] == "integer" and prop["default"] == 5
         assert prop["minimum"] == 1
         assert "limit" not in tool.input_schema["required"]
+
+        act_tool = next(t for t in tools if t.name == "get_act")
+        assert list(act_tool.input_schema["properties"]) == ["url", "output_dir"]
+        assert act_tool.input_schema["required"] == ["url"]
+        prop = act_tool.input_schema["properties"]["url"]
+        assert prop["type"] == "string"
+        assert prop["description"] == "ARLIS act url to save"
+        prop = act_tool.input_schema["properties"]["output_dir"]
+        assert prop["anyOf"] == [{"type": "string"}, {"type": "null"}]
+        assert prop["default"] is None
+        assert prop["description"] == (
+            "Destination directory where the act’s Markdown file will be saved. "
+            "Omit this parameter to use .arlis under PLUGIN_DATA, or the MCP "
+            "server’s working directory if PLUGIN_DATA is unset or empty."
+        )
+        expected_act_description = """Fetch one ARLIS act URL and save it as a local markdown file.
+
+Writes the act's plain-text metadata followed by its full text as markdown to
+<output_dir>/<numeric URL segment>.md (default directory .arlis under
+PLUGIN_DATA, or the server working directory if PLUGIN_DATA is unset or empty).
+Returns only the absolute saved path, the metadata line range and a short
+line-numbered heading structure.
+"""
+        assert " ".join(act_tool.description.split()) == " ".join(
+            expected_act_description.split()
+        )
 
     asyncio.run(check_schema())
     print("PASS: amendment filtering, result limits, validation, request encoding, pagination and MCP schema")
