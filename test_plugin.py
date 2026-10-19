@@ -219,8 +219,10 @@ async def check_launch():
             ]
             assert interpreters, "uv installed no managed interpreter"
             moved_root = base / moved_directory
+            set_mode(copy_root, 0o755, 0o644)
             copy_root.rename(moved_root)
             assert not copy_root.exists()
+            set_mode(moved_root, 0o555, 0o444)
             env["PLUGIN_ROOT"] = str(moved_root)
             await probe(moved_root, env, oracle, order)
             assert snapshot(moved_root) == before
