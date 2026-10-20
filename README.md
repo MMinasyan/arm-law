@@ -21,11 +21,9 @@ ArmLaw combines a research skill for Armenian law with tools for searching
 
 ## Quickstart
 
-```sh
-git clone https://github.com/MMinasyan/arm-law.git ~/plugins/arm-law
-cd ~/plugins/arm-law
-python3 -m pip install .
-```
+Install `https://github.com/MMinasyan/arm-law` with your assistant's
+Agent Plugins 1.0 installer. The repository root is the plugin.
+See [Installation](#installation) for prerequisites and examples.
 
 Then ask your assistant:
 
@@ -35,8 +33,6 @@ Cite the provisions and explain any exceptions.
 ```
 
 The assistant searches ARLIS, reads the saved acts and answers with citations.
-The steps between the clone and the question depend on the client; see
-[Installation](#installation).
 
 ## Usage
 
@@ -51,29 +47,107 @@ For the full method, read
 
 ## Installation
 
-### Python dependencies
+ArmLaw is an Agent Plugins 1.0 package. Install this repository through your
+assistant's normal plugin installer, or supply an unchanged checkout if its
+installer accepts a directory. No public marketplace listing is needed.
 
-The MCP server runs on Python 3.11+ and needs the packages from
-[pyproject.toml](pyproject.toml) in the environment the client will use:
+### Runtime prerequisite
+
+The environment running the MCP server needs `uvx`, which ships with uv.
+The installing agent sets this up when missing; you do not need to prepare
+Python, install Python packages or create a virtual environment yourself.
+uv obtains Python 3.11+ and the declared dependencies on first server start.
+
+Official uv installer for macOS/Linux:
 
 ```sh
-python3 -m pip install .
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-[mcp.json](mcp.json) starts the server with `python3 -m arlis`, resolving
-`python3` from the client's `PATH`.
+Official uv installer from PowerShell on Windows:
 
-### Agent Plugins clients
+```powershell
+irm https://astral.sh/uv/install.ps1 | iex
+```
 
-The repository root is an [Agent Plugins 1.0.0](https://agent-plugins.org/specification)
-package: `plugin.json`, `mcp.json`, `skills/`. Load it through your client's
-plugin installer. Clients that install through marketplaces need a catalog
-entry pointing at this checkout; this repo is the package, not a marketplace.
+Use the installer in the environment where the assistant runs local MCP
+servers, which may differ from the computer displaying its interface.
+Restart the assistant, then check `uvx --version` in its MCP execution
+environment and confirm the actual assistant can start ArmLaw. Restarting
+does not itself guarantee that a GUI backend reads shell-profile changes.
+A shell-only check is not completion.
 
-### ChatGPT desktop app
+If that backend still reports `uvx` missing, use its documented diagnostics
+or execution-environment settings to obtain its actual executable-search
+directories. Select an existing, trusted OS installation directory that the
+backend already searches; do not guess from an unrelated terminal's PATH.
+Install uv there using Astral's supported `UV_INSTALL_DIR` option. The
+variables below hold that verified directory, not a new Python environment.
 
-Register the checkout in a personal marketplace at
-`~/.agents/plugins/marketplace.json`:
+POSIX (`UV_BIN_DIR` is the selected directory):
+
+```sh
+curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR="$UV_BIN_DIR" UV_NO_MODIFY_PATH=1 sh
+```
+
+PowerShell (`$uvBinDir` is the selected directory):
+
+```powershell
+$oldInstallDir = $env:UV_INSTALL_DIR
+$oldNoModifyPath = $env:UV_NO_MODIFY_PATH
+try {
+    $env:UV_INSTALL_DIR = $uvBinDir
+    $env:UV_NO_MODIFY_PATH = "1"
+    irm https://astral.sh/uv/install.ps1 | iex
+} finally {
+    $env:UV_INSTALL_DIR = $oldInstallDir
+    $env:UV_NO_MODIFY_PATH = $oldNoModifyPath
+}
+```
+
+For example, `/usr/local/bin` is suitable only if this backend searches it.
+Use the OS's normal installation approval for the selected directory. The uv
+installer replaces existing uv binaries there, so inspect an existing
+installation before replacing it. Restart and verify actual backend loading
+again. This changes the standard tool's installation location, not ArmLaw's
+MCP profile; do not add an alias, wrapper or absolute-command override. If no
+normal installation/search configuration makes the runner reachable, leave
+the installation incomplete rather than claim success.
+
+### Example: Hermes Agent
+
+With uvx available to the Hermes backend, install and enable the unlisted
+GitHub repository with Hermes's own command:
+
+```sh
+hermes plugins install MMinasyan/arm-law --enable
+```
+
+Restart Hermes, then check:
+
+```sh
+hermes plugins list
+```
+
+Confirm `arm-law` is enabled and ask the assistant to use its ARLIS tools.
+This is Hermes's plugin-install command; ArmLaw does not provide a separate
+installer. Hermes's private package-manager uv is not a substitute for an
+accessible `uvx` command in the MCP backend.
+
+### Example: ChatGPT desktop app, local Work
+
+Use a local checkout:
+
+```sh
+git clone https://github.com/MMinasyan/arm-law.git "$HOME/plugins/arm-law"
+```
+
+If that directory already exists, inspect and reuse/update it instead of
+overwriting a modified checkout.
+
+ChatGPT discovers local plugins through a personal registration file named
+`~/.agents/plugins/marketplace.json`. This local file does not publish ArmLaw
+to a marketplace. For a new file, use:
 
 ```json
 {
@@ -90,26 +164,81 @@ Register the checkout in a personal marketplace at
 }
 ```
 
-The path is relative to your home directory. Restart the app, open
-**Plugins**, install ArmLaw, then start a new local Work or Codex conversation.
+If the file already exists, retain its catalog name and unrelated entries;
+add or update only the ArmLaw entry in `plugins`. The local source path above
+is relative to your home directory.
 
-### Clients without a plugin loader
+Restart ChatGPT. Open the Plugins Directory, choose **Local ArmLaw** (or your
+existing personal catalog), open ArmLaw and install it. Start a new local
+Work conversation and ask the assistant to use its ARLIS tools.
 
-Install `skills/arlis-research/` as an Agent Skill, then register a local MCP
-server yourself: command `python3`, arguments `-m arlis`, working directory
-the repository root.
+These are examples of existing assistant installers, not an app support list.
+Other Agent Plugins 1.0 applications load the same package through their own
+normal installation mechanism. The package has no editor-specific integration.
+
+### First start and verification
+
+The first start may take longer while uv downloads Python and dependencies.
+If the assistant's normal MCP startup allowance is too short, the installing
+agent can warm the declared server command from a local checkout, then retry
+normal plugin loading. Reuse the checkout above, or obtain one with that same
+clone command. From a POSIX shell:
+
+```sh
+cd "$HOME/plugins/arm-law"
+uvx --python ">=3.11" --from . arlis-mcp </dev/null
+```
+
+From PowerShell:
+
+```powershell
+Set-Location "$HOME/plugins/arm-law"
+$null | uvx --python ">=3.11" --from . arlis-mcp
+```
+
+Closed stdin lets the server exit after standard environment setup. This
+warms uv's caches; it does not install the plugin into the assistant. Do not
+change `mcp.json` to an absolute executable path or a hand-built environment.
+
+Confirm the research skill and the ARLIS tools are available in the assistant.
+Ask it to search ARLIS, retrieve one result and read the saved Markdown file.
+Report unsupported or disabled components separately from a fully working
+research workflow.
+
+`uvx --python ">=3.11" --from . arlis-mcp` is the MCP server-start command,
+not a universal command for installing a plugin into an assistant.
 
 ## Notes
 
 - Search returns the latest versions, newest first by enactment date. Use
   `limit` to set the maximum number of entries (default: 5); duplicates can appear.
 - `get_act` returns a file path; the assistant must read the file to use the
-  text. Files are saved to `.arlis/` in the plugin directory unless
-  `output_dir` is set.
+  text. Files are saved to .arlis under the host's PLUGIN_DATA directory,
+  or under the server working directory when PLUGIN_DATA is unset or empty,
+  unless output_dir is set.
 - A cloud-only assistant cannot read saved files through an MCP tunnel; local
   execution is required.
 - The server sends queries to ARLIS; tool results and text the assistant reads
   go to the client's model provider.
+
+## Development
+
+From a writable checkout, run the checks without creating a project environment:
+
+```sh
+uv run --no-project --python ">=3.11" --with ".[verify]" python -B test_search.py
+uv run --no-project --python ">=3.11" --with ".[verify]" python -B test_act.py
+uv run --no-project --python ">=3.11" --with ".[verify]" python -B test_plugin.py
+```
+
+Build a Python wheel from the repository with:
+
+```sh
+uv build --wheel
+```
+
+The wheel goes into `dist/`. It is a Python-package artifact, not a separate
+self-contained plugin bundle; the repository directory remains the plugin.
 
 ## Contributing
 

@@ -3,9 +3,8 @@
   "mcpServers": {
     "arlis": {
       "type": "stdio",
-      "command": "python3",
-      "args": ["-m", "arlis"],
-      "cwd": "${PLUGIN_ROOT}"
+      "command": "uvx",
+      "args": ["--python", ">=3.11", "--from", ".", "arlis-mcp"]
     }
   }
 }

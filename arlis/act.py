@@ -59,17 +59,26 @@ _RELATION_BLOCKS = (
 def get_act(url: str, output_dir: str | None = None) -> str:
     """Fetch one ARLIS act URL and save it as a local markdown file.
 
-    Writes the act's plain-text metadata followed by its full text as
-    markdown to <output_dir>/<numeric URL segment>.md (default
-    directory .arlis under the server working directory). Returns only
-    the absolute saved path, the metadata line range and a short
+    Writes the act's plain-text metadata followed by its full text as markdown to
+    <output_dir>/<numeric URL segment>.md (default directory .arlis under
+    PLUGIN_DATA, or the server working directory if PLUGIN_DATA is unset or empty).
+    Returns only the absolute saved path, the metadata line range and a short
     line-numbered heading structure.
     """
     if not _ARLIS_ACT_URL_RE.match(url):
         raise ValueError(f"not a valid arlis act URL: {url!r}")
     match = _ACT_ID_RE.search(url)
     assert match is not None  # the ARLIS grammar guarantees the segment
-    destination = Path.cwd() / ".arlis" if output_dir is None else Path.cwd() / output_dir
+    destination = Path(".arlis" if output_dir is None else output_dir)
+    if not destination.is_absolute():
+        data_dir = os.environ.get("PLUGIN_DATA")
+        if data_dir and not Path(data_dir).is_absolute():
+            raise ValueError("PLUGIN_DATA must be an absolute directory path")
+        base = Path(data_dir) if data_dir else Path.cwd()
+        destination = base / destination
+        if not destination.is_absolute():
+            # Windows drive-relative inputs resolve against the per-drive cwd.
+            destination = Path(os.path.abspath(destination))
     metadata, body = _read_act(url)
     lines = _metadata_lines(metadata)
     structure = _structure_lines(lines, body)

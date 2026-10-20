@@ -1,18 +1,24 @@
 [build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
 
 [project]
 name = "arlis"
-version = "1.0.0"
+version = "1.1.0"
 description = "Legal research tools for arlis.am"
 requires-python = ">=3.11"
 dependencies = [
     "requests>=2.28.0",
     "beautifulsoup4>=4.9.0",
     "lxml>=4.6.0",
-    "mcp>=2.0.0",
+    "mcp>=2.0.0,<3",
 ]
 
-[tool.setuptools.packages.find]
-include = ["arlis*"]
+[project.optional-dependencies]
+verify = ["jsonschema>=4,<5", "PyYAML>=6,<7"]
+
+[project.scripts]
+arlis-mcp = "arlis.mcp:mcp.run"
+
+[tool.hatch.build.targets.wheel]
+packages = ["arlis"]

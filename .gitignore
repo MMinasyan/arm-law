@@ -1,4 +1,6 @@
 __pycache__/
 *.pyc
+.arlis/
+dist/
 .office/
 AGENTS.md
