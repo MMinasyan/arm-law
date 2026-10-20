@@ -128,10 +128,7 @@ def copy_sources(destination):
         if source.is_dir():
             shutil.copytree(
                 source, destination / entry,
-                ignore=lambda directory, names: [
-                    name for name in names
-                    if name == "__pycache__" or name.endswith(".pyc")
-                ],
+                ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
             )
         else:
             shutil.copy2(source, destination / entry)
