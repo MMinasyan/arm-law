@@ -1,12 +1,59 @@
-"""Run with python3 -B test_search.py; no network requests."""
+"""Run offline checks; add --live to also verify actual ARLIS search results."""
+import argparse
 import asyncio
 import inspect
 import json
+import re
 from unittest.mock import patch
 from urllib.parse import unquote
 
 import arlis
 from arlis.mcp import mcp, search_acts
+
+
+def check_results():
+    # Real titles returned despite ARLIS's exclude_changing_acts filter.
+    amendment = (
+        'ՀՀ ՕՐԵՆՔԸ «ՎԱՐՉԱՐԱՐՈՒԹՅԱՆ ՀԻՄՈՒՆՔՆԵՐԻ ԵՎ ՎԱՐՉԱԿԱՆ ՎԱՐՈՒՅԹԻ ՄԱՍԻՆ» '
+        'ՕՐԵՆՔՈՒՄ ՓՈՓՈԽՈՒԹՅՈՒՆՆԵՐ ԿԱՏԱՐԵԼՈՒ ՄԱՍԻՆ'
+    )
+    addition = amendment.replace('ՓՈՓՈԽՈՒԹՅՈՒՆՆԵՐ', 'ԼՐԱՑՈՒՄ')
+    main = 'ՀՀ ՕՐԵՆՔԸ ՎԱՐՉԱՐԱՐՈՒԹՅԱՆ ՀԻՄՈՒՆՔՆԵՐԻ ԵՎ ՎԱՐՉԱԿԱՆ ՎԱՐՈՒՅԹԻ ՄԱՍԻՆ'
+    # A decision referring to an amendment is not itself an amendment.
+    decision = f'ՀՀ ՍԱՀՄԱՆԱԴՐԱԿԱՆ ԴԱՏԱՐԱՆԻ ՈՐՈՇՈՒՄԸ «{addition}» ՕՐԵՆՔԻ ՎԵՐԱԲԵՐՅԱԼ ԳՈՐԾՈՎ'
+    titles = [amendment, addition] * 5 + [main, decision] + [amendment] * 8 + [main]
+    cards = [
+        {'title': title, 'url': f'https://www.arlis.am/hy/acts/{i}/latest'}
+        for i, title in enumerate(titles, 1)
+    ]
+    for options, expected, expected_pages in (
+        ({'limit': 1}, [main], [1, 2]),
+        ({'limit': 2}, [main, decision], [1, 2]),
+        ({'limit': 3}, [main, decision, main], [1, 2, 3]),
+        ({'limit': 4}, [main, decision, main], [1, 2, 3]),
+        ({'limit': 2, 'incorporations_only': False}, [amendment, addition], [1]),
+    ):
+        pages = []
+
+        def fetch_page(session, params, page, timeout):
+            pages.append(page)
+            return cards[(page - 1) * 10:page * 10], len(cards)
+
+        with patch('arlis.search._fetch_page', side_effect=fetch_page):
+            result = search_acts('ՎԱՐՉԱՐԱՐՈՒԹՅԱՆ ՀԻՄՈՒՆՔՆԵՐԻ', **options)
+        assert re.findall(r'^\d+\. (.+)$', result, re.MULTILINE) == expected
+        assert pages == expected_pages
+
+
+def check_live():
+    query = 'ՎԱՐՉԱՐԱՐՈՒԹՅԱՆ ՀԻՄՈՒՆՔՆԵՐԻ'
+    for excluded in (True, False):
+        result = search_acts(query, incorporations_only=excluded)
+        titles = re.findall(r'^\d+\. (.+)$', result, re.MULTILINE)
+        assert titles, result
+        has_amendments = any(t.endswith('ԿԱՏԱՐԵԼՈՒ ՄԱՍԻՆ') for t in titles)
+        assert has_amendments == (not excluded), result
+        print(f'PASS live: incorporations_only={excluded}, amendment results present={has_amendments}')
 
 
 def check():
@@ -98,9 +145,15 @@ line-numbered heading structure.
             expected_act_description.split()
         )
 
+    check_results()
     asyncio.run(check_schema())
     print("PASS: amendment filtering, result limits, validation, request encoding, pagination and MCP schema")
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--live', action='store_true', help='also check results against arlis.am')
+    options = parser.parse_args()
     check()
+    if options.live:
+        check_live()
