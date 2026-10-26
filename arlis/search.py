@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import re
 
 from .client import REQUEST_TIMEOUT, new_session
 from .source import _PAGE_SIZE, _build_params, _fetch_page, _to_iso_date
@@ -9,6 +10,11 @@ from .source import _PAGE_SIZE, _build_params, _fetch_page, _to_iso_date
 _DATE_KEYS = ("enactment_date", "effective_date")
 
 _ACTIVE_STATUSES = "1,4,5,7,9,12"
+
+# ponytail: title fallback for amendments misclassified by ARLIS; use native metadata if exposed.
+_AMENDMENT_TITLE_RE = re.compile(
+    r"(?:ՓՈՓՈԽՈՒԹՅՈՒՆ(?:ՆԵՐ)?|ԼՐԱՑՈՒՄ(?:ՆԵՐ)?)\s+ԿԱՏԱՐԵԼՈՒ\s+ՄԱՍԻՆ[»\".։\s]*$"
+)
 
 _METADATA_LABELS = (
     ("number", "Number"),
@@ -39,7 +45,7 @@ def search_acts(
     limit: int = 5,
 ) -> str:
     """Search ARLIS for acts and return their titles, URLs and metadata.
-    Latest versions only, newest first by enactment date. Use get_act to
+    Latest versions only, in ARLIS's default order. Use get_act to
     retrieve the text.
     Use only the search_string parameter; others default to what you will
     need in 99% of cases. Don't use optional parameters without a reason.
@@ -76,7 +82,10 @@ def search_acts(
     page = 1
     while True:
         cards, total = _fetch_page(session, params, page, REQUEST_TIMEOUT)
-        results.extend(_clean_card(card) for card in cards)
+        results.extend(
+            _clean_card(card) for card in cards
+            if not incorporations_only or not _AMENDMENT_TITLE_RE.search(card["title"].upper())
+        )
         if len(results) >= limit:
             break
         if total is None or page * _PAGE_SIZE >= total:
