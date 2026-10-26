@@ -484,9 +484,41 @@ disputed points fully and abbreviate straightforward ones. For a text explanatio
 without a factual scenario, explain the legal conditions and consequences without
 inventing facts for an application section.
 
-Cite the act and actual article, part, point or sub-point with its ARLIS URL.
+### Legal writing and citations
+
+Integrate the authority into the sentence explaining the rule or its application.
+Identify what the provision requires, permits or excludes and explain its relevance
+to the question. Do not state a conclusion and then append a standalone link such
+as "Article 79 of the Civil Code" in place of that explanation. Link the act and
+pinpoint reference where they occur naturally in the sentence, using the ARLIS URL.
+Give the act's full title on first reference and use an unambiguous short title
+thereafter. Identify the actual article, part, point or sub-point; do not replace
+the source's structural terms with those of another jurisdiction.
+
+Use the language of the answer. In English, integrate references in forms such as
+the following (N and M stand for verified article numbers):
+
+- "Under Article N(1) of the Civil Code, ..."
+- "Article N(3) of the Civil Code sets out an exhaustive list of ..."
+- "Read together, Articles N and M require ..."
+- "Although Article N permits ..., Article M limits that right where ..."
+
+Use an exhaustive-list formulation only when the provision supports it. A reference
+such as "Article 79(1)" identifies a subdivision, not the whole article; retain
+further subdivisions when needed. In Armenian, integrate the reference similarly:
+"Քաղաքացիական օրենսգրքի 79-րդ հոդվածի 1-ին մասի համաձայն՝ ...".
+These are citation forms, not statements about what Article 79 provides.
+
+Explain how the provisions support the conclusion. Distinguish what the
+legislature expressly provides, what a court has held and
+the conclusion drawn by applying those rules to the facts. Legal phrasing must
+express that reasoning rather than substitute for it; do not repeat the same
+introductory formula mechanically.
+
 For a court decision, identify the court, case identifier, date and relevant
-passage; use ECtHR paragraph numbers where available. Distinguish quotation,
-paraphrase, interpretation and factual application. Preserve the source's conditions
-and exceptions. Identify a missing fact, unavailable source or unresolved interpretation
-where it limits the answer, and explain its effect on the conclusion.
+passage; use ECtHR paragraph numbers where available. Integrate the holding and
+its citation into the explanation of why it applies or can be distinguished.
+Distinguish quotation, paraphrase, interpretation and factual application. Preserve
+the source's conditions and exceptions. Identify a missing fact, unavailable source
+or unresolved interpretation where it limits the answer, and explain its effect on
+the conclusion.
