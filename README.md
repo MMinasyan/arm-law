@@ -21,11 +21,9 @@ ArmLaw combines a research skill for Armenian law with tools for searching
 
 ## Quickstart
 
-Install `https://github.com/MMinasyan/arm-law` with your assistant's
-Agent Plugins 1.0 installer. The repository root is the plugin.
-See [Installation](#installation) for prerequisites and examples.
+See [Installation](#installation) for setup commands.
 
-Then ask your assistant:
+Example question:
 
 ```text
 Can an employer dismiss an employee during sick leave under Armenian law?
@@ -47,50 +45,39 @@ For the full method, read
 
 ## Installation
 
-ArmLaw is an Agent Plugins 1.0 package. Install this repository through your
-assistant's normal plugin installer, or supply an unchanged checkout if its
-installer accepts a directory. No public marketplace listing is needed.
+Use the host's Agent Plugins 1.0 installer with this repository or an
+unchanged checkout. The repository root is the plugin.
 
 ### Runtime prerequisite
 
-The environment running the MCP server needs `uvx`, which ships with uv.
-The installing agent sets this up when missing; you do not need to prepare
-Python, install Python packages or create a virtual environment yourself.
-uv obtains Python 3.11+ and the declared dependencies on first server start.
+The MCP backend needs `uvx`, which ships with
+[uv](https://docs.astral.sh/uv/getting-started/installation/). uv installs
+Python 3.11+ and dependencies on first start.
 
-Official uv installer for macOS/Linux:
+macOS/Linux:
 
 ```sh
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-Official uv installer from PowerShell on Windows:
+Windows PowerShell:
 
 ```powershell
 irm https://astral.sh/uv/install.ps1 | iex
 ```
 
-Use the installer in the environment where the assistant runs local MCP
-servers, which may differ from the computer displaying its interface.
-Restart the assistant, then check `uvx --version` in its MCP execution
-environment and confirm the actual assistant can start ArmLaw. Restarting
-does not itself guarantee that a GUI backend reads shell-profile changes.
-A shell-only check is not completion.
+Check `uvx --version` in the environment that launches MCP servers. A
+desktop app may not inherit the terminal's PATH. If it cannot find `uvx`,
+install uv into a trusted directory already on the backend's PATH using
+[`UV_INSTALL_DIR`](https://docs.astral.sh/uv/reference/installer/).
 
-If that backend still reports `uvx` missing, use its documented diagnostics
-or execution-environment settings to obtain its actual executable-search
-directories. Select an existing, trusted OS installation directory that the
-backend already searches; do not guess from an unrelated terminal's PATH.
-Install uv there using Astral's supported `UV_INSTALL_DIR` option. The
-variables below hold that verified directory, not a new Python environment.
-
-POSIX (`UV_BIN_DIR` is the selected directory):
+POSIX, with `UV_BIN_DIR` set to that directory:
 
 ```sh
 curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR="$UV_BIN_DIR" UV_NO_MODIFY_PATH=1 sh
 ```
 
-PowerShell (`$uvBinDir` is the selected directory):
+PowerShell, with `$uvBinDir` set to that directory:
 
 ```powershell
 $oldInstallDir = $env:UV_INSTALL_DIR
@@ -105,108 +92,62 @@ try {
 }
 ```
 
-For example, `/usr/local/bin` is suitable only if this backend searches it.
-Use the OS's normal installation approval for the selected directory. The uv
-installer replaces existing uv binaries there, so inspect an existing
-installation before replacing it. Restart and verify actual backend loading
-again. This changes the standard tool's installation location, not ArmLaw's
-MCP profile; do not add an alias, wrapper or absolute-command override. If no
-normal installation/search configuration makes the runner reachable, leave
-the installation incomplete rather than claim success.
+The installer replaces existing uv binaries in the target directory; inspect
+an existing installation first. Keep `mcp.json` unchanged and retry startup.
 
-### Example: Hermes Agent
+### ChatGPT desktop
 
-With uvx available to the Hermes backend, install and enable the unlisted
-GitHub repository with Hermes's own command:
+Request write access to the Codex data directory (`CODEX_HOME`, default
+`~/.codex`), not individual files such as `config.toml`.
+
+```sh
+codex --enable plugins plugin marketplace add MMinasyan/arm-law
+codex --enable plugins plugin add arm-law@arm-law --json
+codex --enable plugins plugin list --marketplace arm-law --json
+```
+
+For a branch or tag, add `--ref <ref>` to the first command. The feature flag
+applies only to these commands; plugin support must also be enabled in the host.
+Check that the result lists `arm-law@arm-law` as installed and enabled.
+
+### Hermes Agent
 
 ```sh
 hermes plugins install MMinasyan/arm-law --enable
-```
-
-Restart Hermes, then check:
-
-```sh
 hermes plugins list
 ```
 
-Confirm `arm-law` is enabled and ask the assistant to use its ARLIS tools.
-This is Hermes's plugin-install command; ArmLaw does not provide a separate
-installer. Hermes's private package-manager uv is not a substitute for an
-accessible `uvx` command in the MCP backend.
+Restart Hermes if needed to activate the newly enabled plugin, then verify
+its tools.
 
-### Example: ChatGPT desktop app, local Work
+### First start
 
-Use a local checkout:
+If the host times out while uv downloads Python and dependencies, warm the
+cache from a checkout in a writable directory, then retry plugin loading.
 
-```sh
-git clone https://github.com/MMinasyan/arm-law.git "$HOME/plugins/arm-law"
-```
-
-If that directory already exists, inspect and reuse/update it instead of
-overwriting a modified checkout.
-
-ChatGPT discovers local plugins through a personal registration file named
-`~/.agents/plugins/marketplace.json`. This local file does not publish ArmLaw
-to a marketplace. For a new file, use:
-
-```json
-{
-  "name": "arm-law-local",
-  "interface": { "displayName": "Local ArmLaw" },
-  "plugins": [
-    {
-      "name": "arm-law",
-      "source": { "source": "local", "path": "./plugins/arm-law" },
-      "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
-      "category": "Productivity"
-    }
-  ]
-}
-```
-
-If the file already exists, retain its catalog name and unrelated entries;
-add or update only the ArmLaw entry in `plugins`. The local source path above
-is relative to your home directory.
-
-Restart ChatGPT. Open the Plugins Directory, choose **Local ArmLaw** (or your
-existing personal catalog), open ArmLaw and install it. Start a new local
-Work conversation and ask the assistant to use its ARLIS tools.
-
-These are examples of existing assistant installers, not an app support list.
-Other Agent Plugins 1.0 applications load the same package through their own
-normal installation mechanism. The package has no editor-specific integration.
-
-### First start and verification
-
-The first start may take longer while uv downloads Python and dependencies.
-If the assistant's normal MCP startup allowance is too short, the installing
-agent can warm the declared server command from a local checkout, then retry
-normal plugin loading. Reuse the checkout above, or obtain one with that same
-clone command. From a POSIX shell:
+POSIX:
 
 ```sh
-cd "$HOME/plugins/arm-law"
+git clone https://github.com/MMinasyan/arm-law.git arm-law-warmup
+cd arm-law-warmup
 uvx --python ">=3.11" --from . arlis-mcp </dev/null
 ```
 
-From PowerShell:
+PowerShell:
 
 ```powershell
-Set-Location "$HOME/plugins/arm-law"
+git clone https://github.com/MMinasyan/arm-law.git arm-law-warmup
+Set-Location arm-law-warmup
 $null | uvx --python ">=3.11" --from . arlis-mcp
 ```
 
-Closed stdin lets the server exit after standard environment setup. This
-warms uv's caches; it does not install the plugin into the assistant. Do not
-change `mcp.json` to an absolute executable path or a hand-built environment.
+Reuse an existing checkout when available. Closed stdin lets the server exit
+after environment setup. This warms the cache; it does not install the plugin.
 
-Confirm the research skill and the ARLIS tools are available in the assistant.
-Ask it to search ARLIS, retrieve one result and read the saved Markdown file.
-Report unsupported or disabled components separately from a fully working
-research workflow.
+### Verification
 
-`uvx --python ">=3.11" --from . arlis-mcp` is the MCP server-start command,
-not a universal command for installing a plugin into an assistant.
+Confirm the `arlis-research` skill and both tools are available. Search with
+`search_acts`, retrieve a result with `get_act`, and read the saved Markdown.
 
 ## Notes
 

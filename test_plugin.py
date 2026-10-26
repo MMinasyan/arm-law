@@ -92,6 +92,17 @@ def check_manifests():
     assert plugin["license"] == "MIT"
     assert plugin["extensions"]["com.openai"]["interface"]["displayName"] == "ArmLaw"
 
+    catalog = json.loads(
+        (root / ".agents/plugins/marketplace.json").read_text(encoding="utf-8")
+    )
+    assert catalog["name"] == "arm-law"
+    entry, = catalog["plugins"]
+    assert entry["name"] == plugin["name"]
+    assert entry["source"] == {"source": "local", "path": "./"}
+    assert entry["policy"] == {
+        "installation": "AVAILABLE", "authentication": "ON_INSTALL",
+    }
+
     scripts = tomllib.loads(
         (root / "pyproject.toml").read_text(encoding="utf-8")
     )["project"].get("scripts", {})
