@@ -4,11 +4,12 @@ import asyncio
 import inspect
 import json
 import re
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from urllib.parse import unquote
 
 import arlis
 from arlis.mcp import mcp, search_acts
+from arlis.source import _fetch_page
 
 
 def check_results():
@@ -44,6 +45,11 @@ def check_results():
         assert re.findall(r'^\d+\. (.+)$', result, re.MULTILINE) == expected
         assert pages == expected_pages
 
+    session = Mock()
+    session.get.return_value.json.return_value = {'status': 0, 'html': '<div></div>'}
+    _fetch_page(session, 'filters', 2, 30)
+    assert session.get.call_args.args[0] == 'https://www.arlis.am/hy/search/page/2?filters&order_by='
+
 
 def check_live():
     query = 'ՎԱՐՉԱՐԱՐՈՒԹՅԱՆ ՀԻՄՈՒՆՔՆԵՐԻ'
@@ -54,6 +60,14 @@ def check_live():
         has_amendments = any(t.endswith('ԿԱՏԱՐԵԼՈՒ ՄԱՍԻՆ') for t in titles)
         assert has_amendments == (not excluded), result
         print(f'PASS live: incorporations_only={excluded}, amendment results present={has_amendments}')
+
+    for query, expected in (
+        ('ՔԱՂԱՔԱՑԻԱԿԱՆ ՕՐԵՆՍԳԻՐՔ', 'ՀՀ ՔԱՂԱՔԱՑԻԱԿԱՆ ՕՐԵՆՍԳԻՐՔ'),
+        ('ՎԱՐՉԱՐԱՐՈՒԹՅԱՆ ՀԻՄՈՒՆՔՆԵՐԻ', 'ՀՀ ՕՐԵՆՔԸ ՎԱՐՉԱՐԱՐՈՒԹՅԱՆ ՀԻՄՈՒՆՔՆԵՐԻ ԵՎ ՎԱՐՉԱԿԱՆ ՎԱՐՈՒՅԹԻ ՄԱՍԻՆ'),
+    ):
+        result = search_acts(query, limit=1)
+        assert re.findall(r'^\d+\. (.+)$', result, re.MULTILINE) == [expected], result
+        print(f'PASS live: default ordering returns {expected} first')
 
 
 def check():

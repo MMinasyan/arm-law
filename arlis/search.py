@@ -45,7 +45,7 @@ def search_acts(
     limit: int = 5,
 ) -> str:
     """Search ARLIS for acts and return their titles, URLs and metadata.
-    Latest versions only, newest first by enactment date. Use get_act to
+    Latest versions only, in ARLIS's default order. Use get_act to
     retrieve the text.
     Use only the search_string parameter; others default to what you will
     need in 99% of cases. Don't use optional parameters without a reason.

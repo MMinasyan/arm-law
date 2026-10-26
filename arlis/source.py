@@ -259,7 +259,7 @@ def _fetch_page(
     page: int,
     request_timeout: float,
 ) -> tuple[list[dict], int | None]:
-    url = f"{BASE_URL}/hy/search/page/{page}?{params}&order_by=enactment_date DESC"
+    url = f"{BASE_URL}/hy/search/page/{page}?{params}&order_by="
     response = session.get(url, headers=_SEARCH_HEADERS, timeout=request_timeout)
     response.raise_for_status()
     data = response.json()

@@ -151,7 +151,7 @@ Confirm the `arlis-research` skill and both tools are available. Search with
 
 ## Notes
 
-- Search returns the latest versions, newest first by enactment date. Use
+- Search returns the latest versions in ARLIS's default order. Use
   `limit` to set the maximum number of entries (default: 5); duplicates can appear.
 - `get_act` returns a file path; the assistant must read the file to use the
   text. Files are saved to .arlis under the host's PLUGIN_DATA directory,
