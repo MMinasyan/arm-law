@@ -149,6 +149,12 @@ after environment setup. This warms the cache; it does not install the plugin.
 Confirm the `arlis-research` skill and both tools are available. Search with
 `search_acts`, retrieve a result with `get_act`, and read the saved Markdown.
 
+### Updates
+
+Updates are managed by the host's plugin manager. Git marketplace installations
+can fetch updates from the configured branch; fixed commits remain pinned.
+Start a new chat after updating the bundled skill.
+
 ## Notes
 
 - Search returns the latest versions in ARLIS's default order. Use
