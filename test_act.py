@@ -5,7 +5,7 @@ import tempfile
 from pathlib import Path
 from unittest import mock
 
-from arlis.act import get_act
+from arlis.act import _structure_lines, get_act
 
 url = "https://www.arlis.am/hy/acts/1/latest"
 body = "# Act\nText.\n"
@@ -33,6 +33,38 @@ def plugin_data(value):
 
 
 def check():
+    assert _structure_lines([], "ԳԼՈՒԽ 4.1: 2026\n") == "ԳԼՈՒԽ 4.1: 2026"
+    outline_body = "\n".join((
+        "# Overview ###",
+        "Գ Լ ՈՒ Խ 4.1 — 2026",
+        "***ԸՆԴՀԱՆՈՒՐ ԴՐՈՒՅԹՆԵՐ***",
+        "1234 !? -",
+        "ՄԵԾ ու փոքր",
+        "## Scope",
+        "### Not selected",
+        "#### ԱՅԼ ԲԱԺԻՆ 2. ####",
+        "````",
+        "NOT AN OUTLINE ENTRY",
+        "```",
+        "STILL IN CODE",
+        "~~~~",
+        "```` trailing text",
+        "````",
+        "TAIL 3: TITLE.",
+        "~~~~",
+        "SKIP TILDE CODE",
+        "~~~~",
+    ))
+    assert _structure_lines(["title: Test", "number: 1"], outline_body) == (
+        "Overview: line 4\n"
+        "Գ Լ ՈՒ Խ 4.1 — 2026\n"
+        "***ԸՆԴՀԱՆՈՒՐ ԴՐՈՒՅԹՆԵՐ***\n"
+        "Scope: line 9\n"
+        "ԱՅԼ ԲԱԺԻՆ 2.: line 11\n"
+        "TAIL 3: TITLE."
+    )
+    assert _structure_lines([], "Mixed case\n1234 !?\n") == "No top-level headings."
+
     with tempfile.TemporaryDirectory() as temp_dir:
         root = Path(temp_dir).resolve()
         cwd_dir, data_dir, override_dir = (
@@ -55,7 +87,9 @@ def check():
                 assert result.splitlines()[0] == f"Saved: {target}"
                 assert target.is_absolute() and target.is_file()
                 with open(target, encoding="utf-8") as handle:
-                    assert handle.read().endswith(body)
+                    saved = handle.read()
+                assert saved.endswith(body)
+                assert result.endswith(f"Act: line {saved.splitlines().index('# Act') + 1}")
 
             # PLUGIN_DATA absent, then empty: standalone cwd behavior.
             expect_saved(None, None, cwd / ".arlis")
@@ -127,7 +161,7 @@ def check():
 
     print(
         "PASS: PLUGIN_DATA and output_dir destinations, validation order, "
-        "Windows path forms"
+        "Windows path forms, headings and uppercase structure lines"
     )
 
 

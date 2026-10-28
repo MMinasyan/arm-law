@@ -31,8 +31,8 @@ _DATE_FIELDS = (
 
 _NO_ENTRY = "None listed by ARLIS."
 
-# Short ToC: ATX headings outside backtick/tilde fences, up to three
-# leading spaces, optional closing hashes removed from the title.
+# Short ToC: ATX headings and uppercase lines outside backtick/tilde fences.
+# Headings allow up to three leading spaces and optional closing hashes.
 # Fences track the opening marker and run length: a fence closes only
 # on the same marker with at least the opening run of characters and a
 # whitespace-only tail, so shorter runs, the other marker and
@@ -177,8 +177,8 @@ def _metadata_lines(record: dict) -> list[str]:
 
 
 def _structure_lines(metadata_lines: list[str], body: str) -> str:
-    """The two shallowest distinct heading levels, in saved-file lines."""
-    headings: list[tuple[int, int, str]] = []
+    """The two shallowest heading levels plus uppercase lines, in file order."""
+    headings: list[tuple[int, int | None, str]] = []
     fence: tuple[str, int] | None = None
     for lineno, line in enumerate(body.split("\n"), start=1):
         if fence is None:
@@ -198,15 +198,17 @@ def _structure_lines(metadata_lines: list[str], body: str) -> str:
         if match:
             title = _CLOSING_HASHES_RE.sub("", match.group(2) or "").strip()
             headings.append((lineno, len(match.group(1)), title))
+        elif line.isupper():
+            headings.append((lineno, None, line.strip()))
     if not headings:
         return "No top-level headings."
-    levels = sorted({level for _, level, _ in headings})
+    levels = sorted({level for _, level, _ in headings if level is not None})
     keep = set(levels[:2])
     offset = len(metadata_lines) + 1
     return "\n".join(
-        f"Line {offset + lineno}: {title}"
+        title if level is None else f"{title}: line {offset + lineno}"
         for lineno, level, title in headings
-        if level in keep
+        if level in keep or title.isupper()
     )
 
 
