@@ -117,8 +117,13 @@ hermes plugins install MMinasyan/arm-law --enable
 hermes plugins list
 ```
 
-Restart Hermes if needed to activate the newly enabled plugin, then verify
-its tools.
+Start a new Hermes chat after installation to load the MCP tools. No manual
+MCP configuration is needed. Verify by calling `search_acts`; the development
+tests below are not required for installation.
+
+`hermes plugins doctor` may report `0 tool(s), 0 hook(s)` for this plugin.
+That is expected: `search_acts` and `get_act` are exposed through MCP, not
+native Hermes registrations.
 
 ### First start
 
