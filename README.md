@@ -172,7 +172,7 @@ Updates are managed by the host's plugin manager. Git marketplace installations
 can fetch updates from the configured branch; fixed commits remain pinned.
 Start a new chat after updating the bundled skill.
 
-In Claude Code, run `claude plugin update arm-law@arm-law`.
+Run `claude plugin update arm-law@arm-law`.
 
 ## Notes
 
