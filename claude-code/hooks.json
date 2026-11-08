@@ -1,0 +1,4 @@
+{
+  "description": "Claude Code only: read the skill's bundled references without a prompt.",
+  "modules": ["./allow-references.ts"]
+}

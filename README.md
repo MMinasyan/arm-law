@@ -110,6 +110,18 @@ For a branch or tag, add `--ref <ref>` to the first command. The feature flag
 applies only to these commands; plugin support must also be enabled in the host.
 Check that the result lists `arm-law@arm-law` as installed and enabled.
 
+### Claude Code
+
+Requires Claude Code 2.1.309 or later.
+
+```sh
+claude plugin install arm-law --marketplace MMinasyan/arm-law
+```
+
+Run `/reload-plugins` or start a new session to load the plugin. Acts are
+saved to `.arlis/` in the session folder. The plugin lets Claude Code read the
+skill's bundled references without asking.
+
 ### Hermes Agent
 
 ```sh
@@ -160,6 +172,8 @@ Updates are managed by the host's plugin manager. Git marketplace installations
 can fetch updates from the configured branch; fixed commits remain pinned.
 Start a new chat after updating the bundled skill.
 
+Run `claude plugin update arm-law@arm-law`.
+
 ## Notes
 
 - Search returns the latest versions in ARLIS's default order. Use
@@ -182,6 +196,8 @@ uv run --no-project --python ">=3.11" --with ".[verify]" python -B test_search.p
 uv run --no-project --python ">=3.11" --with ".[verify]" python -B test_act.py
 uv run --no-project --python ">=3.11" --with ".[verify]" python -B test_plugin.py
 ```
+
+With Claude Code installed, also run `claude plugin test .`.
 
 Build a Python wheel from the repository with:
 

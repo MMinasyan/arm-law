@@ -1,0 +1,6 @@
+{
+  "name": "arm-law",
+  "description": "Armenian legal research with ARLIS sources.",
+  "owner": { "name": "MMinasyan", "url": "https://github.com/MMinasyan" },
+  "plugins": [{ "name": "arm-law", "source": "./" }]
+}

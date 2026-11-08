@@ -24,7 +24,8 @@ mcp_id = "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json"
 command = "uvx"
 args = ["--python", ">=3.11", "--from", ".", "arlis-mcp"]
 copy_entries = (
-    "plugin.json", "mcp.json", "pyproject.toml", "README.md", "LICENSE",
+    "plugin.json", "mcp.json", ".claude-plugin", "pyproject.toml", "README.md",
+    "LICENSE",
     "arlis", "skills",
 )
 private_names = ("PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV", "UV_PYTHON")
@@ -108,6 +109,48 @@ def check_manifests():
     )["project"].get("scripts", {})
     assert scripts == {"arlis-mcp": "arlis.mcp:mcp.run"}
 
+    # Claude Code adapter: same name and version as the portable manifest and
+    # the Python package; the server runs from the installed plugin directory.
+    claude = json.loads(
+        (root / ".claude-plugin/plugin.json").read_text(encoding="utf-8")
+    )
+    project = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+    assert claude["name"] == plugin["name"]
+    assert claude["version"] == plugin["version"] == project["project"]["version"]
+    claude_server = claude["mcpServers"]["arlis"]
+    assert claude_server["type"] == "stdio"
+    assert claude_server["command"] == command
+    assert claude_server["args"] == [
+        "--python", ">=3.11", "--from", "${CLAUDE_PLUGIN_ROOT}", "arlis-mcp",
+    ]
+    # Claude Code reads without approval only inside the session's working
+    # directory, so acts must stay in the server's default location there.
+    assert "env" not in claude_server and "cwd" not in claude_server
+    assert not (root / ".mcp.json").exists()
+    claude_catalog = json.loads(
+        (root / ".claude-plugin/marketplace.json").read_text(encoding="utf-8")
+    )
+    assert claude_catalog["name"] == plugin["name"]
+    claude_entry, = claude_catalog["plugins"]
+    assert claude_entry["name"] == plugin["name"]
+    assert claude_entry["source"] == "./"
+    assert "version" not in claude_entry
+
+    # Claude Code only: a hooks module that approves reads of the skill's
+    # bundled references. It sits outside the default hooks/ path and is named
+    # only in the Claude manifest, so other hosts do not pick it up.
+    # claude plugin test . runs its behaviour tests.
+    assert claude["hooks"] == "./claude-code/hooks.json"
+    claude_hooks = json.loads(
+        (root / "claude-code/hooks.json").read_text(encoding="utf-8")
+    )
+    assert claude_hooks["modules"] == ["./allow-references.ts"]
+    assert "hooks" not in claude_hooks
+    assert (root / "claude-code/allow-references.ts").is_file()
+    assert (root / "claude-code/allow-references.test.ts").is_file()
+    assert "hooks" not in plugin
+    assert not (root / "hooks").exists()
+
     server = manifest["mcpServers"]["arlis"]
     assert server["type"] == "stdio"
     assert server["command"] == command
@@ -165,12 +208,18 @@ def snapshot(path):
     }
 
 
-async def probe(copy_root, env, oracle, order):
-    manifest = json.loads((copy_root / "mcp.json").read_text(encoding="utf-8"))
+async def probe(copy_root, env, oracle, order, session_dir=None):
+    manifest_file = ".claude-plugin/plugin.json" if session_dir else "mcp.json"
+    manifest = json.loads((copy_root / manifest_file).read_text(encoding="utf-8"))
     server = manifest["mcpServers"]["arlis"]
     parameters = StdioServerParameters(
-        command=server["command"], args=server["args"], env=env,
-        cwd=str(copy_root),
+        command=server["command"],
+        args=[
+            arg.replace("${CLAUDE_PLUGIN_ROOT}", str(copy_root))
+            for arg in server["args"]
+        ],
+        env=env,
+        cwd=str(session_dir or copy_root),
     )
     async with stdio_client(parameters) as (read, write):
         async with ClientSession(read, write) as session:
@@ -234,6 +283,16 @@ async def check_launch():
             env["PLUGIN_ROOT"] = str(moved_root)
             await probe(moved_root, env, oracle, order)
             assert snapshot(moved_root) == before
+
+            # Claude Code starts the server from the user's session folder.
+            session_dir = base / "session"
+            session_dir.mkdir()
+            claude_env = {
+                name: value for name, value in env.items()
+                if name not in ("PLUGIN_ROOT", "PLUGIN_DATA")
+            }
+            await probe(moved_root, claude_env, oracle, order, session_dir)
+            assert snapshot(moved_root) == before
         finally:
             for path in (copy_root, moved_root):
                 if path is not None and path.exists():
@@ -247,6 +306,9 @@ def check():
         (skill_dir / "SKILL.md").read_text(encoding="utf-8")
     )
     check_frontmatter(frontmatter, skill_dir.name)
+    # Every host reads this file. allowed-tools is experimental in the Agent
+    # Skills spec and its values are host-specific, so it does not belong here.
+    assert "allowed-tools" not in frontmatter
     try:
         check_frontmatter(dict(frontmatter, description=""), skill_dir.name)
     except AssertionError:
@@ -257,7 +319,7 @@ def check():
     asyncio.run(check_launch())
     print(
         "PASS: canonical manifests and cached schemas, skill frontmatter, "
-        "cold source launch and moved-copy startup"
+        "cold source launch, moved-copy startup and Claude Code launch"
     )
 
 
